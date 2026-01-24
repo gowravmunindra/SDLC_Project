@@ -1,0 +1,27 @@
+{
+  "name": "smart-sdlc-platform",
+  "version": "1.0.0",
+  "description": "Smart SDLC Automation Platform powered by Agentic AI",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [
+    "sdlc",
+    "ai",
+    "automation",
+    "react"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.2",
+    "vite": "^7.3.1"
+  }
+}
