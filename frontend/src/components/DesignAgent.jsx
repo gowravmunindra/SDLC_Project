@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import geminiService from '../services/geminiService'
+import { designPrompt } from '../utils/promptTemplates'
 
 function DesignAgent({ onClose, onComplete }) {
     const [step, setStep] = useState('loading') // loading, architecture, components, diagrams, database, review, complete
@@ -40,18 +42,45 @@ function DesignAgent({ onClose, onComplete }) {
         }
     }, [])
 
-    const analyzeAndGenerateDesign = (reqData) => {
+    const analyzeAndGenerateDesign = async (reqData) => {
         setIsAnalyzing(true)
 
-        // Simulate AI analysis
-        setTimeout(() => {
+        try {
+            // Generate prompt for Gemini
+            const prompt = designPrompt(reqData)
+            
+            // Call Gemini AI
+            const result = await geminiService.generateJSON(prompt)
+            
+            // Set all generated design artifacts
+            if (result.architecture) {
+                setArchitecture(result.architecture)
+            }
+            if (result.components) {
+                setComponents(result.components)
+            }
+            if (result.diagrams) {
+                setDiagrams(result.diagrams)
+            }
+            if (result.databaseSchema) {
+                setDatabaseSchema(result.databaseSchema)
+            }
+            
+            setIsAnalyzing(false)
+            setStep('architecture')
+        } catch (error) {
+            console.error('Error generating design:', error)
+            alert('AI design generation failed. Using fallback design. Error: ' + error.message)
+            
+            // Fallback to basic design on error
             generateArchitecture(reqData)
             generateComponents(reqData)
             generateDiagrams(reqData)
             generateDatabaseSchema(reqData)
+            
             setIsAnalyzing(false)
             setStep('architecture')
-        }, 2000)
+        }
     }
 
     const generateArchitecture = (reqData) => {

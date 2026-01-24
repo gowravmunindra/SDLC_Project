@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import geminiService from '../services/geminiService'
+import { testingPrompt } from '../utils/promptTemplates'
 
 function TestingAgent({ onClose, onComplete }) {
     const [step, setStep] = useState('loading') // loading, strategy, testcases, integration, edge, review, complete
@@ -38,8 +40,44 @@ function TestingAgent({ onClose, onComplete }) {
         }
     }, [])
 
-    const generateTestingPlan = (reqData) => {
-        setTimeout(() => {
+    const generateTestingPlan = async (reqData) => {
+        try {
+            // Get design from localStorage
+            const savedDesign = localStorage.getItem('sdlc_design')
+            const design = savedDesign ? JSON.parse(savedDesign) : null
+            
+            // Generate prompt for Gemini
+            const prompt = testingPrompt(reqData, design)
+            
+            // Call Gemini AI
+            const result = await geminiService.generateJSON(prompt)
+            
+            // Set all generated testing artifacts
+            if (result.testStrategy) {
+                setTestStrategy(result.testStrategy)
+            }
+            if (result.testCases) {
+                setTestCases(result.testCases)
+            }
+            if (result.integrationTests) {
+                setIntegrationTests(result.integrationTests)
+            }
+            if (result.edgeCases) {
+                setEdgeCases(result.edgeCases)
+            }
+            if (result.riskAreas) {
+                setRiskAreas(result.riskAreas)
+            }
+            
+            // Generate traceability matrix
+            generateTraceabilityMatrix(reqData)
+            
+            setStep('strategy')
+        } catch (error) {
+            console.error('Error generating testing plan:', error)
+            alert('AI testing generation failed. Using fallback plan. Error: ' + error.message)
+            
+            // Fallback to basic testing plan on error
             generateTestStrategy()
             generateTestCases(reqData)
             generateIntegrationTests()
@@ -47,7 +85,7 @@ function TestingAgent({ onClose, onComplete }) {
             generateRiskAreas()
             generateTraceabilityMatrix(reqData)
             setStep('strategy')
-        }, 2000)
+        }
     }
 
     const generateTestStrategy = () => {

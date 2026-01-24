@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import geminiService from '../services/geminiService'
+import { requirementsPrompt } from '../utils/promptTemplates'
 
 function RequirementsAgent({ onClose, onComplete }) {
     const [step, setStep] = useState('input') // input, analysis, review, complete
@@ -32,103 +34,95 @@ function RequirementsAgent({ onClose, onComplete }) {
         }, 2000)
     }
 
-    const analyzeRequirements = (description) => {
-        // This is a simplified analysis - in production, this would use AI
-        const lowerDesc = description.toLowerCase()
-
-        // Generate Functional Requirements
-        const frs = []
-        if (lowerDesc.includes('user') || lowerDesc.includes('login')) {
+    const analyzeRequirements = async (description) => {
+        try {
+            // Generate prompt for Gemini
+            const prompt = requirementsPrompt(description)
+            
+            // Call Gemini AI
+            const result = await geminiService.generateJSON(prompt)
+            
+            // Set the generated requirements
+            setFunctionalRequirements(result.functionalRequirements || [])
+            setNonFunctionalRequirements(result.nonFunctionalRequirements || {
+                performance: [],
+                security: [],
+                usability: [],
+                scalability: [],
+                reliability: []
+            })
+            setStakeholders(result.stakeholders || [])
+            setAssumptions(result.assumptions || [])
+            setConstraints(result.constraints || [])
+        } catch (error) {
+            console.error('Error analyzing requirements:', error)
+            
+            // Fallback to basic requirements on error
+            alert('AI analysis failed. Using fallback requirements. Error: ' + error.message)
+            
+            // Generate basic fallback requirements
+            const frs = []
+            const lowerDesc = description.toLowerCase()
+            
+            if (lowerDesc.includes('user') || lowerDesc.includes('login')) {
+                frs.push({
+                    id: 'FR-001',
+                    title: 'User Authentication',
+                    description: 'The system shall allow users to register and login with email and password',
+                    priority: 'High',
+                    editable: true
+                })
+            }
+            if (lowerDesc.includes('data') || lowerDesc.includes('store')) {
+                frs.push({
+                    id: 'FR-002',
+                    title: 'Data Management',
+                    description: 'The system shall provide CRUD operations for managing data',
+                    priority: 'High',
+                    editable: true
+                })
+            }
+            
             frs.push({
-                id: 'FR-001',
-                title: 'User Authentication',
-                description: 'The system shall allow users to register and login with email and password',
+                id: `FR-00${frs.length + 1}`,
+                title: 'Core Functionality',
+                description: 'The system shall implement the main features as described in the project scope',
                 priority: 'High',
                 editable: true
             })
-        }
-        if (lowerDesc.includes('data') || lowerDesc.includes('store')) {
-            frs.push({
-                id: 'FR-002',
-                title: 'Data Management',
-                description: 'The system shall provide CRUD operations for managing data',
-                priority: 'High',
-                editable: true
+
+            setFunctionalRequirements(frs)
+            
+            setNonFunctionalRequirements({
+                performance: [
+                    { id: 'NFR-P-001', description: 'Page load time should be under 3 seconds', editable: true }
+                ],
+                security: [
+                    { id: 'NFR-S-001', description: 'All passwords must be encrypted', editable: true }
+                ],
+                usability: [
+                    { id: 'NFR-U-001', description: 'Interface should be intuitive', editable: true }
+                ],
+                scalability: [
+                    { id: 'NFR-SC-001', description: 'Architecture should support scaling', editable: true }
+                ],
+                reliability: [
+                    { id: 'NFR-R-001', description: 'System uptime should be at least 99%', editable: true }
+                ]
             })
+
+            setAssumptions([
+                { id: 'A-001', description: 'Users have basic computer literacy', editable: true }
+            ])
+
+            setConstraints([
+                { id: 'C-001', description: 'Project must be completed within budget', editable: true }
+            ])
+
+            setStakeholders([
+                { id: 'SH-001', name: 'End Users', role: 'Primary users of the system', editable: true }
+            ])
         }
-        if (lowerDesc.includes('search')) {
-            frs.push({
-                id: 'FR-003',
-                title: 'Search Functionality',
-                description: 'The system shall allow users to search and filter data',
-                priority: 'Medium',
-                editable: true
-            })
-        }
-        if (lowerDesc.includes('report') || lowerDesc.includes('dashboard')) {
-            frs.push({
-                id: 'FR-004',
-                title: 'Reporting & Analytics',
-                description: 'The system shall provide dashboard and reporting capabilities',
-                priority: 'Medium',
-                editable: true
-            })
-        }
-
-        // Add a generic requirement
-        frs.push({
-            id: `FR-00${frs.length + 1}`,
-            title: 'Core Functionality',
-            description: 'The system shall implement the main features as described in the project scope',
-            priority: 'High',
-            editable: true
-        })
-
-        setFunctionalRequirements(frs)
-
-        // Generate Non-Functional Requirements
-        setNonFunctionalRequirements({
-            performance: [
-                { id: 'NFR-P-001', description: 'Page load time should be under 3 seconds', editable: true },
-                { id: 'NFR-P-002', description: 'System should handle at least 100 concurrent users', editable: true }
-            ],
-            security: [
-                { id: 'NFR-S-001', description: 'All passwords must be encrypted using industry-standard algorithms', editable: true },
-                { id: 'NFR-S-002', description: 'System must implement HTTPS for all communications', editable: true }
-            ],
-            usability: [
-                { id: 'NFR-U-001', description: 'Interface should be intuitive and require minimal training', editable: true },
-                { id: 'NFR-U-002', description: 'System should be responsive and work on mobile devices', editable: true }
-            ],
-            scalability: [
-                { id: 'NFR-SC-001', description: 'Architecture should support horizontal scaling', editable: true }
-            ],
-            reliability: [
-                { id: 'NFR-R-001', description: 'System uptime should be at least 99.5%', editable: true },
-                { id: 'NFR-R-002', description: 'Data backup should occur daily', editable: true }
-            ]
-        })
-
-        // Generate Assumptions
-        setAssumptions([
-            { id: 'A-001', description: 'Users have basic computer literacy', editable: true },
-            { id: 'A-002', description: 'Internet connectivity is available', editable: true },
-            { id: 'A-003', description: 'Modern web browsers will be used (Chrome, Firefox, Safari, Edge)', editable: true }
-        ])
-
-        // Generate Constraints
-        setConstraints([
-            { id: 'C-001', description: 'Project must be completed within budget', editable: true },
-            { id: 'C-002', description: 'Must comply with data protection regulations (GDPR, etc.)', editable: true },
-            { id: 'C-003', description: 'Technology stack should use open-source tools where possible', editable: true }
-        ])
-
-        // Identify Stakeholders
-        setStakeholders([
-            { id: 'SH-001', name: 'End Users', role: 'Primary users of the system', editable: true },
-            { id: 'SH-002', name: 'System Administrators', role: 'Manage and maintain the system', editable: true },
-            { id: 'SH-003', name: 'Project Sponsor', role: 'Provides funding and strategic direction', editable: true }
-        ])
     }
 
     const addFunctionalRequirement = () => {

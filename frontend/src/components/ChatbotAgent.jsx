@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
+import geminiService from '../services/geminiService'
+import { chatbotPrompt } from '../utils/promptTemplates'
 
 function ChatbotAgent() {
     const [isOpen, setIsOpen] = useState(false)
@@ -358,7 +360,7 @@ Each test case includes:
         return null
     }
 
-    const handleSendMessage = () => {
+    const handleSendMessage = async () => {
         if (!inputValue.trim()) return
 
         // Add user message
@@ -370,13 +372,32 @@ Each test case includes:
         }
 
         setMessages(prev => [...prev, userMessage])
+        const currentInput = inputValue
         setInputValue('')
         setIsTyping(true)
 
-        // Simulate bot thinking and response
-        setTimeout(() => {
-            const match = findBestMatch(inputValue)
-
+        try {
+            // Try AI response first
+            const conversationHistory = messages.slice(-5) // Last 5 messages for context
+            const prompt = chatbotPrompt(currentInput, conversationHistory)
+            
+            const responseText = await geminiService.generateContent(prompt)
+            
+            const botResponse = {
+                id: messages.length + 2,
+                type: 'bot',
+                text: responseText,
+                timestamp: new Date()
+            }
+            
+            setMessages(prev => [...prev, botResponse])
+            setIsTyping(false)
+        } catch (error) {
+            console.error('Chatbot error:', error)
+            
+            // Fallback to knowledge base on error
+            const match = findBestMatch(currentInput)
+            
             let botResponse
             if (match) {
                 botResponse = {
@@ -390,22 +411,14 @@ Each test case includes:
                 botResponse = {
                     id: messages.length + 2,
                     type: 'bot',
-                    text: `I'm not sure I understand that question. Here are some things I can help with:
-
-📚 Explain SDLC concepts
-🚀 Guide you through the platform
-📋 Explain requirements, design, development, testing
-🎯 Suggest next steps
-✅ Share best practices
-
-Try asking one of the quick questions below, or rephrase your question!`,
+                    text: `I'm having trouble connecting to AI services right now. Here are some things I can help with:\n\n📚 Explain SDLC concepts\n🚀 Guide you through the platform\n📋 Explain requirements, design, development, testing\n🎯 Suggest next steps\n✅ Share best practices\n\nTry asking one of the quick questions below, or rephrase your question!`,
                     timestamp: new Date()
                 }
             }
 
             setMessages(prev => [...prev, botResponse])
             setIsTyping(false)
-        }, 1000)
+        }
     }
 
     const handleQuickQuestion = (question) => {

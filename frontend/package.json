@@ -17,6 +17,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "react": "^19.2.3",
     "react-dom": "^19.2.3"
   },

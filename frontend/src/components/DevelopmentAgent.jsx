@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import geminiService from '../services/geminiService'
+import { developmentPrompt } from '../utils/promptTemplates'
 
 function DevelopmentAgent({ onClose, onComplete }) {
     const [step, setStep] = useState('loading') // loading, techstack, structure, code, apis, review, complete
@@ -41,15 +43,48 @@ function DevelopmentAgent({ onClose, onComplete }) {
         }
     }, [])
 
-    const generateDevelopmentPlan = (designData) => {
-        setTimeout(() => {
+    const generateDevelopmentPlan = async (designData) => {
+        try {
+            // Get requirements from localStorage
+            const savedRequirements = localStorage.getItem('sdlc_requirements')
+            const requirements = savedRequirements ? JSON.parse(savedRequirements) : {}
+            
+            // Generate prompt for Gemini
+            const prompt = developmentPrompt(requirements, designData)
+            
+            // Call Gemini AI
+            const result = await geminiService.generateJSON(prompt)
+            
+            // Set all generated development artifacts
+            if (result.techStack) {
+                setTechStack(result.techStack)
+            }
+            if (result.folderStructure) {
+                setFolderStructure(result.folderStructure)
+            }
+            if (result.codeSnippets) {
+                setCodeSnippets(result.codeSnippets)
+            }
+            if (result.apiContracts) {
+                setApiContracts(result.apiContracts)
+            }
+            if (result.bestPractices) {
+                setBestPractices(result.bestPractices)
+            }
+            
+            setStep('techstack')
+        } catch (error) {
+            console.error('Error generating development plan:', error)
+            alert('AI development generation failed. Using fallback plan. Error: ' + error.message)
+            
+            // Fallback to basic design on error
             generateTechStack(designData)
             generateFolderStructure(designData)
             generateCodeSnippets(designData)
             generateAPIContracts(designData)
             generateBestPractices(designData)
             setStep('techstack')
-        }, 2000)
+        }
     }
 
     const generateTechStack = (designData) => {
