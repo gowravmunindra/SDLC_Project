@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import geminiService from '../services/geminiService'
+import huggingFaceService from '../services/huggingFaceService'
 import { developmentPrompt } from '../utils/promptTemplates'
 
 function DevelopmentAgent({ onClose, onComplete }) {
@@ -49,11 +49,11 @@ function DevelopmentAgent({ onClose, onComplete }) {
             const savedRequirements = localStorage.getItem('sdlc_requirements')
             const requirements = savedRequirements ? JSON.parse(savedRequirements) : {}
             
-            // Generate prompt for Gemini
+            // Generate prompt for Hugging Face
             const prompt = developmentPrompt(requirements, designData)
             
-            // Call Gemini AI
-            const result = await geminiService.generateJSON(prompt)
+            // Call Hugging Face AI
+            const result = await huggingFaceService.generateJSON(prompt)
             
             // Set all generated development artifacts
             if (result.techStack) {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import geminiService from '../services/geminiService'
+import huggingFaceService from '../services/huggingFaceService'
 import { designPrompt } from '../utils/promptTemplates'
 
 function DesignAgent({ onClose, onComplete }) {
@@ -46,11 +46,11 @@ function DesignAgent({ onClose, onComplete }) {
         setIsAnalyzing(true)
 
         try {
-            // Generate prompt for Gemini
+            // Generate prompt for Hugging Face
             const prompt = designPrompt(reqData)
             
-            // Call Gemini AI
-            const result = await geminiService.generateJSON(prompt)
+            // Call Hugging Face AI
+            const result = await huggingFaceService.generateJSON(prompt)
             
             // Set all generated design artifacts
             if (result.architecture) {

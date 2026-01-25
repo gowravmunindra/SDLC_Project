@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import geminiService from '../services/geminiService'
+import huggingFaceService from '../services/huggingFaceService'
 import { chatbotPrompt } from '../utils/promptTemplates'
 
 function ChatbotAgent() {
@@ -381,7 +381,7 @@ Each test case includes:
             const conversationHistory = messages.slice(-5) // Last 5 messages for context
             const prompt = chatbotPrompt(currentInput, conversationHistory)
             
-            const responseText = await geminiService.generateContent(prompt)
+            const responseText = await huggingFaceService.generateContent(prompt)
             
             const botResponse = {
                 id: messages.length + 2,

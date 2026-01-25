@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import geminiService from '../services/geminiService'
+import huggingFaceService from '../services/huggingFaceService'
 import { testingPrompt } from '../utils/promptTemplates'
 
 function TestingAgent({ onClose, onComplete }) {
@@ -46,11 +46,11 @@ function TestingAgent({ onClose, onComplete }) {
             const savedDesign = localStorage.getItem('sdlc_design')
             const design = savedDesign ? JSON.parse(savedDesign) : null
             
-            // Generate prompt for Gemini
+            // Generate prompt for Hugging Face
             const prompt = testingPrompt(reqData, design)
             
-            // Call Gemini AI
-            const result = await geminiService.generateJSON(prompt)
+            // Call Hugging Face AI
+            const result = await huggingFaceService.generateJSON(prompt)
             
             // Set all generated testing artifacts
             if (result.testStrategy) {

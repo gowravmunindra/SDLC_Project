@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import geminiService from '../services/geminiService'
+import huggingFaceService from '../services/huggingFaceService'
 import { requirementsPrompt } from '../utils/promptTemplates'
 
 function RequirementsAgent({ onClose, onComplete }) {
@@ -39,8 +39,8 @@ function RequirementsAgent({ onClose, onComplete }) {
             // Generate prompt for Gemini
             const prompt = requirementsPrompt(description)
             
-            // Call Gemini AI
-            const result = await geminiService.generateJSON(prompt)
+            // Call Hugging Face AI
+            const result = await huggingFaceService.generateJSON(prompt)
             
             // Set the generated requirements
             setFunctionalRequirements(result.functionalRequirements || [])
