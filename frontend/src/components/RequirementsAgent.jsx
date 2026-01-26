@@ -1,8 +1,14 @@
 import { useState } from 'react'
+import { useProject } from '../contexts/ProjectContext'
+import apiService from '../services/apiService'
 import huggingFaceService from '../services/huggingFaceService'
 import { requirementsPrompt } from '../utils/promptTemplates'
+import { convertToIEEEFormat } from '../utils/ieeeFormatConverter'
+import { generateIEEEPDF } from '../utils/ieeePDFGenerator'
+import { parseIEEEPDF, validateParsedData } from '../utils/pdfParser'
 
 function RequirementsAgent({ onClose, onComplete }) {
+    const { currentProject, updateProject } = useProject()
     const [step, setStep] = useState('input') // input, analysis, review, complete
     const [projectDescription, setProjectDescription] = useState('')
     const [functionalRequirements, setFunctionalRequirements] = useState([])
@@ -17,8 +23,9 @@ function RequirementsAgent({ onClose, onComplete }) {
     const [constraints, setConstraints] = useState([])
     const [stakeholders, setStakeholders] = useState([])
     const [isAnalyzing, setIsAnalyzing] = useState(false)
+    const [isImporting, setIsImporting] = useState(false)
 
-    const handleAnalyze = () => {
+    const handleAnalyze = async () => {
         if (!projectDescription.trim()) {
             alert('Please provide a project description first!')
             return
@@ -26,12 +33,18 @@ function RequirementsAgent({ onClose, onComplete }) {
 
         setIsAnalyzing(true)
 
-        // Simulate AI analysis (in real implementation, this would call an AI service)
-        setTimeout(() => {
-            analyzeRequirements(projectDescription)
+        try {
+            // Wait for AI analysis to complete
+            await analyzeRequirements(projectDescription)
+            
+            // Only move to review after we have data
             setIsAnalyzing(false)
             setStep('review')
-        }, 2000)
+        } catch (error) {
+            console.error('Analysis failed:', error)
+            setIsAnalyzing(false)
+            alert('Failed to analyze requirements. Please try again.')
+        }
     }
 
     const analyzeRequirements = async (description) => {
@@ -171,7 +184,45 @@ function RequirementsAgent({ onClose, onComplete }) {
         setNonFunctionalRequirements(updated)
     }
 
-    const handleComplete = () => {
+    const handleImportPDF = async (event) => {
+        const file = event.target.files?.[0]
+        if (!file) return
+
+        if (file.type !== 'application/pdf') {
+            alert('Please select a PDF file')
+            return
+        }
+
+        setIsImporting(true)
+
+        try {
+            // Parse PDF using AI
+            const parsedData = await parseIEEEPDF(file)
+            
+            // Validate and clean data
+            const validatedData = validateParsedData(parsedData)
+            
+            // Populate all fields
+            setProjectDescription(validatedData.projectDescription)
+            setFunctionalRequirements(validatedData.functionalRequirements)
+            setNonFunctionalRequirements(validatedData.nonFunctionalRequirements)
+            setStakeholders(validatedData.stakeholders)
+            setAssumptions(validatedData.assumptions)
+            setConstraints(validatedData.constraints)
+            
+            setIsImporting(false)
+            setStep('review')
+            
+            alert('✅ IEEE SRS PDF imported successfully! Review and edit the requirements below.')
+            
+        } catch (error) {
+            console.error('PDF import failed:', error)
+            setIsImporting(false)
+            alert('Failed to import PDF. Please ensure it\'s a valid IEEE SRS format or try manual entry.')
+        }
+    }
+
+    const handleComplete = async () => {
         const requirementsData = {
             projectDescription,
             functionalRequirements,
@@ -182,15 +233,27 @@ function RequirementsAgent({ onClose, onComplete }) {
             generatedAt: new Date().toISOString()
         }
 
-        // Save to localStorage for now (in production, would save to backend)
-        localStorage.setItem('sdlc_requirements', JSON.stringify(requirementsData))
+        // Save to database using current project ID
+        if (currentProject) {
+            try {
+                await apiService.saveRequirements(currentProject._id, requirementsData)
+                // Update project context to refresh data
+                await updateProject(currentProject._id, { status: 'design' })
+            } catch (error) {
+                console.error('Error saving requirements:', error)
+                alert('Failed to save requirements. Please try again.')
+                return
+            }
+        }
 
         setStep('complete')
-
-        // Notify parent component
-        if (onComplete) {
-            onComplete(requirementsData)
-        }
+        
+        // Auto-navigate to next phase after a brief delay
+        setTimeout(() => {
+            if (onComplete) {
+                onComplete(requirementsData)
+            }
+        }, 1500)
     }
 
     const exportRequirements = () => {
@@ -209,6 +272,23 @@ function RequirementsAgent({ onClose, onComplete }) {
         a.href = url
         a.download = 'requirements-specification.json'
         a.click()
+    }
+
+    const exportIEEEFormat = () => {
+        const requirementsData = {
+            projectDescription,
+            functionalRequirements,
+            nonFunctionalRequirements,
+            assumptions,
+            constraints,
+            stakeholders
+        }
+
+        // Convert to IEEE format
+        const ieeeData = convertToIEEEFormat(requirementsData)
+        
+        // Generate and download IEEE PDF
+        generateIEEEPDF(ieeeData)
     }
 
     return (
@@ -235,7 +315,43 @@ function RequirementsAgent({ onClose, onComplete }) {
                     <div className="step-container">
                         <div className="step-header">
                             <h3>Step 1: Describe Your Project</h3>
-                            <p>Tell me about your project in simple terms. What problem are you solving? Who will use it?</p>
+                            <p>Tell me about your project in simple terms, or import an existing IEEE SRS PDF.</p>
+                        </div>
+
+                        <div className="import-section" style={{ marginBottom: '20px' }}>
+                            <div style={{ padding: '20px', background: 'var(--bg-card)', border: '2px solid var(--border-color)', borderRadius: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                    <div style={{ flex: 1 }}>
+                                        <label className="input-label" style={{ marginBottom: '5px', display: 'block' }}>📤 Import Existing IEEE SRS PDF</label>
+                                        <p style={{ margin: 0, fontSize: '14px', color: '#666' }}>Upload your IEEE-formatted PDF to automatically extract all requirements</p>
+                                    </div>
+                                    <label htmlFor="pdf-upload" className="btn-secondary" style={{ cursor: 'pointer', margin: 0, whiteSpace: 'nowrap' }}>
+                                        {isImporting ? (
+                                            <>
+                                                <span className="spinner"></span>
+                                                Importing...
+                                            </>
+                                        ) : (
+                                            <>
+                                                📄 Choose PDF
+                                            </>
+                                        )}
+                                    </label>
+                                    <input
+                                        id="pdf-upload"
+                                        type="file"
+                                        accept=".pdf"
+                                        onChange={handleImportPDF}
+                                        style={{ display: 'none' }}
+                                        disabled={isImporting}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style={{ textAlign: 'center', margin: '20px 0', color: '#999', fontSize: '14px', position: 'relative' }}>
+                            <hr style={{ border: 'none', borderTop: '1px solid #d4d9f5' }} />
+                            <span style={{ position: 'absolute', top: '-10px', left: '50%', transform: 'translateX(-50%)', background: 'var(--bg-card)', padding: '0 15px' }}>OR ENTER MANUALLY</span>
                         </div>
 
                         <div className="input-section">
@@ -426,6 +542,9 @@ function RequirementsAgent({ onClose, onComplete }) {
                             <button className="btn-secondary" onClick={exportRequirements}>
                                 📥 Export JSON
                             </button>
+                            <button className="btn-secondary" onClick={exportIEEEFormat}>
+                                📄 Export IEEE PDF
+                            </button>
                             <button className="btn-primary-action" onClick={handleComplete}>
                                 Complete & Save
                                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -467,10 +586,19 @@ function RequirementsAgent({ onClose, onComplete }) {
 
                         <div className="step-actions">
                             <button className="btn-secondary" onClick={exportRequirements}>
-                                📥 Export Requirements
+                                📥 Export JSON
                             </button>
-                            <button className="btn-primary-action" onClick={onClose}>
-                                Close & Return to Dashboard
+                            <button className="btn-secondary" onClick={exportIEEEFormat}>
+                                📄 Export IEEE Format
+                            </button>
+                            <button className="btn-secondary" onClick={onClose}>
+                                ← Return to Dashboard
+                            </button>
+                            <button className="btn-primary-action" onClick={handleProceedToDesign}>
+                                Proceed to Design Phase
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                    <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                </svg>
                             </button>
                         </div>
                     </div>

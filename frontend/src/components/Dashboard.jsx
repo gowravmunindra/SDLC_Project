@@ -1,49 +1,64 @@
-import { useState } from 'react'
-import RequirementsAgent from './RequirementsAgent'
-import DesignAgent from './DesignAgent'
-import DevelopmentAgent from './DevelopmentAgent'
-import TestingAgent from './TestingAgent'
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
+import { useProject } from '../contexts/ProjectContext'
+import ProjectSelector from './ProjectSelector'
+import CreateProjectModal from './CreateProjectModal'
 import ConsistencyValidator from './ConsistencyValidator'
 
 function Dashboard({ isOpen, onClose }) {
-    const [activeAgent, setActiveAgent] = useState(null)
+    const navigate = useNavigate()
+    const { user, logout } = useAuth()
+    const { currentProject } = useProject()
     const [showValidator, setShowValidator] = useState(false)
+    const [showCreateModal, setShowCreateModal] = useState(false)
     const [phases, setPhases] = useState([
-        { id: 'requirements', icon: '📋', name: 'Requirements Analysis', description: 'Define what to build', status: 'ready', locked: false },
-        { id: 'design', icon: '🎨', name: 'System Design', description: 'Plan the architecture', status: 'locked', locked: true },
-        { id: 'development', icon: '💻', name: 'Development', description: 'Build the solution', status: 'locked', locked: true },
-        { id: 'testing', icon: '🧪', name: 'Testing & QA', description: 'Ensure quality', status: 'locked', locked: true },
-        { id: 'deployment', icon: '🚀', name: 'Deployment', description: 'Release to production', status: 'locked', locked: true },
-        { id: 'maintenance', icon: '🔧', name: 'Maintenance', description: 'Monitor & improve', status: 'locked', locked: true }
+        { id: 'requirements', path: '/requirements', icon: '📋', name: 'Requirements Analysis', description: 'Define what to build', status: 'ready', locked: false },
+        { id: 'design', path: '/design', icon: '🎨', name: 'System Design', description: 'Plan the architecture', status: 'locked', locked: true },
+        { id: 'development', path: '/development', icon: '💻', name: 'Development', description: 'Build the solution', status: 'locked', locked: true },
+        { id: 'testing', path: '/testing', icon: '🧪', name: 'Testing & QA', description: 'Ensure quality', status: 'locked', locked: true },
+{ id: 'deployment', path: '#', icon: '🚀', name: 'Deployment', description: 'Release to production', status: 'locked', locked: true },
+        { id: 'maintenance', path: '#', icon: '🔧', name: 'Maintenance', description: 'Monitor & improve', status: 'locked', locked: true }
     ])
 
-    const handleStartPhase = (phaseId) => {
-        const phaseIndex = phases.findIndex(p => p.id === phaseId)
-        if (phaseIndex === -1 || phases[phaseIndex].locked) return
-
-        // Open the appropriate agent
-        setActiveAgent(phaseId)
-    }
-
-    const handleAgentComplete = (phaseId, data) => {
-        const phaseIndex = phases.findIndex(p => p.id === phaseId)
-        if (phaseIndex === -1) return
+    // Check project data for completed phases when current project changes
+    useEffect(() => {
+        if (!currentProject) return
 
         const newPhases = [...phases]
-        newPhases[phaseIndex].status = 'completed'
-
-        // Unlock next phase
-        if (phaseIndex < phases.length - 1) {
-            newPhases[phaseIndex + 1].locked = false
-            newPhases[phaseIndex + 1].status = 'ready'
+        
+        // Check which phases are completed based on project data
+        if (currentProject.requirements?.completedAt) {
+            newPhases[0].status = 'completed'
+            newPhases[1].locked = false
+            newPhases[1].status = 'ready'
+        }
+        if (currentProject.design?.completedAt) {
+            newPhases[1].status = 'completed'
+            newPhases[2].locked = false
+            newPhases[2].status = 'ready'
+        }
+        if (currentProject.development?.completedAt) {
+            newPhases[2].status = 'completed'
+            newPhases[3].locked = false
+            newPhases[3].status = 'ready'
+        }
+        if (currentProject.testing?.completedAt) {
+            newPhases[3].status = 'completed'
+            newPhases[4].locked = false
+            newPhases[4].status = 'ready'
         }
 
         setPhases(newPhases)
-        setActiveAgent(null)
-    }
+    }, [currentProject])
 
-    const handleCloseAgent = () => {
-        setActiveAgent(null)
+    const handleStartPhase = (phase) => {
+        if (phase.locked) return
+        
+        // Navigate to the phase page
+        if (phase.path !== '#') {
+            navigate(phase.path)
+        }
     }
 
     const handleValidateConsistency = () => {
@@ -61,35 +76,6 @@ function Dashboard({ isOpen, onClose }) {
         return <ConsistencyValidator onClose={handleCloseValidator} />
     }
 
-    // If an agent is active, show it instead of the dashboard
-    if (activeAgent === 'requirements') {
-        return <RequirementsAgent
-            onClose={handleCloseAgent}
-            onComplete={(data) => handleAgentComplete('requirements', data)}
-        />
-    }
-
-    if (activeAgent === 'design') {
-        return <DesignAgent
-            onClose={handleCloseAgent}
-            onComplete={(data) => handleAgentComplete('design', data)}
-        />
-    }
-
-    if (activeAgent === 'development') {
-        return <DevelopmentAgent
-            onClose={handleCloseAgent}
-            onComplete={(data) => handleAgentComplete('development', data)}
-        />
-    }
-
-    if (activeAgent === 'testing') {
-        return <TestingAgent
-            onClose={handleCloseAgent}
-            onComplete={(data) => handleAgentComplete('testing', data)}
-        />
-    }
-
     return (
         <div className="dashboard-overlay">
             <div className="dashboard-container">
@@ -99,12 +85,47 @@ function Dashboard({ isOpen, onClose }) {
                         <p>Manage your software development lifecycle</p>
                     </div>
                     <div className="dashboard-header-actions">
+                        {currentProject && (
+                            <ProjectSelector onCreateNew={() => setShowCreateModal(true)} />
+                        )}
                         <button className="btn-validate" onClick={handleValidateConsistency}>
                             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
                                 <circle cx="10" cy="10" r="7" />
                                 <path d="M7 10L9 12L13 8" />
                             </svg>
                             Validate Consistency
+                        </button>
+                        <button 
+                            onClick={logout}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                padding: '10px 16px',
+                                background: 'rgba(239, 68, 68, 0.1)',
+                                border: '1px solid rgba(239, 68, 68, 0.3)',
+                                borderRadius: '10px',
+                                color: '#ef4444',
+                                cursor: 'pointer',
+                                fontSize: '14px',
+                                fontWeight: '600',
+                                transition: 'all 0.3s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)'
+                                e.currentTarget.style.borderColor = '#ef4444'
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'
+                                e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)'
+                            }}
+                        >
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                                <polyline points="16 17 21 12 16 7"/>
+                                <line x1="21" y1="12" x2="9" y2="12"/>
+                            </svg>
+                            Sign Out
                         </button>
                         <button className="close-dashboard" onClick={onClose}>
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -146,7 +167,7 @@ function Dashboard({ isOpen, onClose }) {
                                     <button
                                         className="btn-phase-action"
                                         disabled={phase.locked}
-                                        onClick={() => handleStartPhase(phase.id)}
+                                        onClick={() => handleStartPhase(phase)}
                                     >
                                         {phase.status === 'in-progress' ? 'Continue' :
                                             phase.status === 'completed' ? 'Review' : 'Start Phase'}
@@ -169,6 +190,13 @@ function Dashboard({ isOpen, onClose }) {
                     </div>
                 </div>
             </div>
+            
+            {/* Create Project Modal */}
+            <CreateProjectModal 
+                isOpen={showCreateModal}
+                onClose={() => setShowCreateModal(false)}
+                onSuccess={() => setShowCreateModal(false)}
+            />
         </div>
     )
 }
