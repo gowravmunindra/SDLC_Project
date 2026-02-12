@@ -114,3 +114,5 @@ public/
 # Backup files
 *.bak
 *.backup
+
+UmlProject/

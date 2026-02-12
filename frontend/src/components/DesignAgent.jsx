@@ -1,40 +1,48 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import geminiService from '../services/geminiService'
 import huggingFaceService from '../services/huggingFaceService'
 import { designPrompt } from '../utils/promptTemplates'
+import { getPlantUMLUrl, cleanPlantUML } from '../utils/plantuml'
+import './DesignAgent.css'
 
 function DesignAgent({ onClose, onComplete }) {
-    const [step, setStep] = useState('loading') // loading, architecture, components, diagrams, database, review, complete
+    const [step, setStep] = useState('loading') // loading, architecture, diagrams, complete
     const [requirements, setRequirements] = useState(null)
-    const [architecture, setArchitecture] = useState({
-        type: 'monolith',
-        justification: '',
-        layers: []
-    })
-    const [components, setComponents] = useState([])
-    const [diagrams, setDiagrams] = useState({
-        useCase: { description: '', actors: [], useCases: [] },
-        class: { description: '', classes: [] },
-        sequence: { description: '', flows: [] }
-    })
-    const [databaseSchema, setDatabaseSchema] = useState({
-        type: 'relational',
-        tables: []
-    })
-    const [isAnalyzing, setIsAnalyzing] = useState(false)
+    const [architecture, setArchitecture] = useState(null)
 
+    // UI State
+    const [showHero, setShowHero] = useState(true)
+    const contentRef = useRef(null)
+
+    // PlantUML State
+    const [activeDiagram, setActiveDiagram] = useState('useCase')
+    const [diagrams, setDiagrams] = useState({
+        useCase: { code: '', url: '', status: 'pending', label: 'Use Case', error: null },
+        class: { code: '', url: '', status: 'pending', label: 'Class', error: null },
+        sequence: { code: '', url: '', status: 'pending', label: 'Sequence', error: null },
+        activity: { code: '', url: '', status: 'pending', label: 'Activity', error: null },
+        state: { code: '', url: '', status: 'pending', label: 'State Chart', error: null },
+        component: { code: '', url: '', status: 'pending', label: 'Component', error: null },
+        deployment: { code: '', url: '', status: 'pending', label: 'Deployment', error: null }
+    })
+
+    const [customPrompt, setCustomPrompt] = useState('')
+    const [isModifying, setIsModifying] = useState(false)
+
+    // Load Data
     useEffect(() => {
-        // Load requirements from previous phase
         const savedRequirements = localStorage.getItem('sdlc_requirements')
         if (savedRequirements) {
             const reqData = JSON.parse(savedRequirements)
             setRequirements(reqData)
             analyzeAndGenerateDesign(reqData)
         } else {
-            // No requirements found - create sample data
+            // Fallback for demo
             const sampleReq = {
-                projectDescription: 'Sample project for design demonstration',
+                projectDescription: 'A smart home automation system that allows users to control devices remotely.',
                 functionalRequirements: [
-                    { id: 'FR-001', title: 'User Authentication', description: 'Users can register and login' }
+                    { title: 'Device Control', description: 'Turn lights on/off' },
+                    { title: 'User Auth', description: 'Secure login' }
                 ]
             }
             setRequirements(sampleReq)
@@ -42,374 +50,238 @@ function DesignAgent({ onClose, onComplete }) {
         }
     }, [])
 
-    const analyzeAndGenerateDesign = async (reqData) => {
-        setIsAnalyzing(true)
+    // Auto-generate diagrams when architecture is ready
+    useEffect(() => {
+        if (step === 'architecture' && requirements) {
+            generateAllDiagrams()
+        }
+    }, [step, requirements])
 
+    const generateAllDiagrams = async () => {
+        const types = Object.keys(diagrams).filter(t => diagrams[t].status === 'pending')
+
+        for (const type of types) {
+            await generateDiagram(type)
+            // Add delay to avoid rate limits
+            await new Promise(resolve => setTimeout(resolve, 2000))
+        }
+    }
+
+    // Scroll Handler for Hero
+    const handleScroll = (e) => {
+        const scrollTop = e.target.scrollTop
+        setShowHero(scrollTop < 50)
+    }
+
+    const analyzeAndGenerateDesign = async (reqData) => {
         try {
-            // Generate prompt for Hugging Face
+            // Generate Architecture Text (keeping existing consistency)
             const prompt = designPrompt(reqData)
-            
-            // Call Hugging Face AI
-            const result = await huggingFaceService.generateJSON(prompt)
-            
-            // Set all generated design artifacts
-            if (result.architecture) {
-                setArchitecture(result.architecture)
+            let archData = null
+
+            try {
+                // Try HuggingFace first as per previous flow
+                archData = await huggingFaceService.generateJSON(prompt)
+            } catch (e) {
+                console.warn('HF failed, using fallback arch', e)
+                archData = generateArchitectureFallback(reqData)
             }
-            if (result.components) {
-                setComponents(result.components)
+
+            if (archData && archData.architecture) {
+                setArchitecture(archData.architecture)
+            } else {
+                setArchitecture(generateArchitectureFallback(reqData).architecture)
             }
-            if (result.diagrams) {
-                setDiagrams(result.diagrams)
-            }
-            if (result.databaseSchema) {
-                setDatabaseSchema(result.databaseSchema)
-            }
-            
-            setIsAnalyzing(false)
+
             setStep('architecture')
         } catch (error) {
             console.error('Error generating design:', error)
-            alert('AI design generation failed. Using fallback design. Error: ' + error.message)
-            
-            // Fallback to basic design on error
-            generateArchitecture(reqData)
-            generateComponents(reqData)
-            generateDiagrams(reqData)
-            generateDatabaseSchema(reqData)
-            
-            setIsAnalyzing(false)
+            setArchitecture(generateArchitectureFallback(reqData).architecture)
             setStep('architecture')
         }
     }
 
-    const generateArchitecture = (reqData) => {
-        const desc = reqData.projectDescription?.toLowerCase() || ''
-        const numRequirements = reqData.functionalRequirements?.length || 0
-
-        // Decide architecture based on complexity
-        const isMicroservices = desc.includes('microservice') ||
-            desc.includes('scalable') ||
-            numRequirements > 10
-
-        setArchitecture({
-            type: isMicroservices ? 'microservices' : 'monolith',
-            justification: isMicroservices
-                ? 'Based on the project requirements, a microservices architecture is recommended for better scalability, independent deployment, and team autonomy. This allows different services to be developed and scaled independently.'
-                : 'A monolithic architecture is recommended for this project as it provides simplicity, easier development and deployment, and is suitable for the current scale. It can be migrated to microservices later if needed.',
-            layers: [
-                {
-                    name: 'Presentation Layer',
-                    description: 'User interface and user experience components. Handles all user interactions and displays data.',
-                    technologies: ['React', 'HTML5', 'CSS3', 'JavaScript'],
-                    responsibilities: ['UI Components', 'State Management', 'User Input Validation', 'Routing']
-                },
-                {
-                    name: 'Application Layer',
-                    description: 'Business logic and application services. Orchestrates the flow of data and enforces business rules.',
-                    technologies: ['Node.js', 'Express.js', 'REST API'],
-                    responsibilities: ['Business Logic', 'API Endpoints', 'Request Validation', 'Authentication & Authorization']
-                },
-                {
-                    name: 'Data Layer',
-                    description: 'Data persistence and retrieval. Manages all database operations and data integrity.',
-                    technologies: ['PostgreSQL', 'MongoDB', 'Redis (Cache)'],
-                    responsibilities: ['Data Storage', 'CRUD Operations', 'Data Validation', 'Caching']
-                }
-            ]
-        })
-    }
-
-    const generateComponents = (reqData) => {
-        const comps = [
-            {
-                id: 'C-001',
-                name: 'Authentication Service',
-                description: 'Handles user registration, login, logout, and session management',
-                responsibilities: ['User registration', 'Login/Logout', 'Password encryption', 'JWT token generation', 'Session management'],
-                interfaces: ['POST /api/auth/register', 'POST /api/auth/login', 'POST /api/auth/logout', 'GET /api/auth/verify'],
-                dependencies: ['User Database', 'Email Service']
-            },
-            {
-                id: 'C-002',
-                name: 'User Management Service',
-                description: 'Manages user profiles, permissions, and user-related operations',
-                responsibilities: ['Profile management', 'User CRUD operations', 'Role assignment', 'Permission management'],
-                interfaces: ['GET /api/users/:id', 'PUT /api/users/:id', 'DELETE /api/users/:id', 'GET /api/users'],
-                dependencies: ['User Database', 'Authentication Service']
-            },
-            {
-                id: 'C-003',
-                name: 'Core Business Logic',
-                description: 'Implements the main business functionality based on requirements',
-                responsibilities: ['Business rule enforcement', 'Data processing', 'Workflow management', 'Validation'],
-                interfaces: ['Various REST endpoints based on features'],
-                dependencies: ['Database', 'External APIs']
-            },
-            {
-                id: 'C-004',
-                name: 'Data Access Layer',
-                description: 'Provides abstraction for database operations',
-                responsibilities: ['Database queries', 'ORM management', 'Connection pooling', 'Transaction management'],
-                interfaces: ['Repository pattern interfaces'],
-                dependencies: ['Database']
-            },
-            {
-                id: 'C-005',
-                name: 'API Gateway',
-                description: 'Single entry point for all client requests',
-                responsibilities: ['Request routing', 'Load balancing', 'Rate limiting', 'API versioning'],
-                interfaces: ['All public API endpoints'],
-                dependencies: ['All backend services']
+    const generateArchitectureFallback = (reqData) => {
+        return {
+            architecture: {
+                type: 'Monolithic',
+                justification: 'Simplified architecture for immediate development.',
+                layers: [
+                    { name: 'Frontend', description: 'React-based UI', technologies: ['React', 'Vite'] },
+                    { name: 'Backend', description: 'Node.js/Express API', technologies: ['Node', 'Express'] },
+                    { name: 'Database', description: 'Relational Store', technologies: ['PostgreSQL'] }
+                ]
             }
-        ]
-
-        setComponents(comps)
+        }
     }
 
-    const generateDiagrams = (reqData) => {
-        // Use Case Diagram
-        const useCaseDiagram = {
-            description: 'The Use Case Diagram shows the interactions between users (actors) and the system. It illustrates what the system does from a user\'s perspective.',
-            actors: [
-                { id: 'A-001', name: 'End User', description: 'Primary user of the system' },
-                { id: 'A-002', name: 'Administrator', description: 'System administrator with elevated privileges' },
-                { id: 'A-003', name: 'Guest User', description: 'Unauthenticated visitor' }
-            ],
-            useCases: [
-                { id: 'UC-001', name: 'Register Account', actor: 'Guest User', description: 'User creates a new account' },
-                { id: 'UC-002', name: 'Login', actor: 'End User', description: 'User authenticates to access the system' },
-                { id: 'UC-003', name: 'Manage Profile', actor: 'End User', description: 'User updates their profile information' },
-                { id: 'UC-004', name: 'Perform Core Operations', actor: 'End User', description: 'User performs main business functions' },
-                { id: 'UC-005', name: 'Manage Users', actor: 'Administrator', description: 'Admin manages user accounts' },
-                { id: 'UC-006', name: 'View Reports', actor: 'Administrator', description: 'Admin views system reports and analytics' }
-            ]
-        }
+    // Core PlantUML Generation
+    const generateDiagram = async (type, manualPrompt = null) => {
+        setDiagrams(prev => ({
+            ...prev,
+            [type]: { ...prev[type], status: 'loading', error: null }
+        }))
 
-        // Class Diagram
-        const classDiagram = {
-            description: 'The Class Diagram shows the structure of the system by displaying classes, their attributes, methods, and relationships. This represents the object-oriented design of the application.',
-            classes: [
-                {
-                    id: 'CL-001',
-                    name: 'User',
-                    attributes: ['id: UUID', 'email: String', 'password: String (hashed)', 'firstName: String', 'lastName: String', 'role: String', 'createdAt: DateTime', 'updatedAt: DateTime'],
-                    methods: ['register()', 'login()', 'updateProfile()', 'changePassword()', 'validateCredentials()'],
-                    relationships: ['Has many: Sessions', 'Has one: Profile']
-                },
-                {
-                    id: 'CL-002',
-                    name: 'Session',
-                    attributes: ['id: UUID', 'userId: UUID', 'token: String', 'expiresAt: DateTime', 'createdAt: DateTime'],
-                    methods: ['create()', 'validate()', 'revoke()', 'refresh()'],
-                    relationships: ['Belongs to: User']
-                },
-                {
-                    id: 'CL-003',
-                    name: 'Profile',
-                    attributes: ['id: UUID', 'userId: UUID', 'bio: Text', 'avatar: String', 'preferences: JSON'],
-                    methods: ['update()', 'getPublicInfo()'],
-                    relationships: ['Belongs to: User']
-                },
-                {
-                    id: 'CL-004',
-                    name: 'Role',
-                    attributes: ['id: UUID', 'name: String', 'permissions: Array<String>'],
-                    methods: ['hasPermission()', 'grantPermission()', 'revokePermission()'],
-                    relationships: ['Has many: Users']
+        try {
+            const prompt = constructPrompt(type, requirements, manualPrompt)
+            console.log(`[DesignAgent] Generating ${type} diagram...`)
+            const code = await geminiService.generateContent(prompt)
+
+            if (!code) throw new Error("Received empty response from AI")
+
+            const cleanCode = cleanPlantUML(code)
+            if (!cleanCode) throw new Error("Failed to parse valid PlantUML code")
+
+            const url = getPlantUMLUrl(cleanCode)
+
+            setDiagrams(prev => ({
+                ...prev,
+                [type]: {
+                    ...prev[type],
+                    code: cleanCode,
+                    url: url,
+                    status: 'done',
+                    error: null
                 }
-            ]
-        }
+            }))
 
-        // Sequence Diagram
-        const sequenceDiagram = {
-            description: 'Sequence Diagrams show how objects interact over time. They illustrate the flow of messages between components for specific scenarios.',
-            flows: [
-                {
-                    id: 'SEQ-001',
-                    name: 'User Login Flow',
-                    description: 'Step-by-step process when a user logs into the system',
-                    steps: [
-                        '1. User enters email and password in the login form',
-                        '2. Frontend validates input and sends POST request to /api/auth/login',
-                        '3. API Gateway receives request and routes to Authentication Service',
-                        '4. Authentication Service queries User Database for user record',
-                        '5. Database returns user data (if exists)',
-                        '6. Authentication Service verifies password hash',
-                        '7. If valid, Authentication Service generates JWT token',
-                        '8. Session is created and stored in database',
-                        '9. JWT token is returned to Frontend',
-                        '10. Frontend stores token and redirects user to dashboard'
-                    ]
-                },
-                {
-                    id: 'SEQ-002',
-                    name: 'Data Retrieval Flow',
-                    description: 'How data is fetched and displayed to the user',
-                    steps: [
-                        '1. User navigates to a page requiring data',
-                        '2. Frontend sends GET request with authentication token',
-                        '3. API Gateway validates token',
-                        '4. Request is routed to appropriate service',
-                        '5. Service validates user permissions',
-                        '6. Service queries Data Access Layer',
-                        '7. Data Access Layer executes database query',
-                        '8. Database returns results',
-                        '9. Service formats and filters data',
-                        '10. Response is sent back to Frontend',
-                        '11. Frontend renders data in UI'
-                    ]
-                },
-                {
-                    id: 'SEQ-003',
-                    name: 'User Registration Flow',
-                    description: 'Complete flow for new user registration',
-                    steps: [
-                        '1. Guest user fills registration form',
-                        '2. Frontend validates input (email format, password strength)',
-                        '3. POST request sent to /api/auth/register',
-                        '4. Authentication Service checks if email already exists',
-                        '5. If unique, password is hashed using bcrypt',
-                        '6. New user record is created in database',
-                        '7. Welcome email is queued (Email Service)',
-                        '8. Success response with user ID is returned',
-                        '9. User is automatically logged in',
-                        '10. Frontend redirects to onboarding/dashboard'
-                    ]
+        } catch (error) {
+            console.error(`[DesignAgent] Error generating ${type}:`, error)
+            setDiagrams(prev => ({
+                ...prev,
+                [type]: {
+                    ...prev[type],
+                    status: 'error',
+                    error: error.message || "Unknown error occurred"
                 }
-            ]
+            }))
         }
-
-        setDiagrams({
-            useCase: useCaseDiagram,
-            class: classDiagram,
-            sequence: sequenceDiagram
-        })
     }
 
-    const generateDatabaseSchema = (reqData) => {
-        setDatabaseSchema({
-            type: 'relational',
-            justification: 'A relational database (PostgreSQL) is recommended for its ACID compliance, data integrity, and support for complex queries. It\'s ideal for structured data with clear relationships.',
-            tables: [
-                {
-                    id: 'T-001',
-                    name: 'users',
-                    description: 'Stores user account information',
-                    columns: [
-                        { name: 'id', type: 'UUID', constraints: 'PRIMARY KEY', description: 'Unique user identifier' },
-                        { name: 'email', type: 'VARCHAR(255)', constraints: 'UNIQUE NOT NULL', description: 'User email address' },
-                        { name: 'password_hash', type: 'VARCHAR(255)', constraints: 'NOT NULL', description: 'Bcrypt hashed password' },
-                        { name: 'first_name', type: 'VARCHAR(100)', constraints: 'NOT NULL', description: 'User first name' },
-                        { name: 'last_name', type: 'VARCHAR(100)', constraints: 'NOT NULL', description: 'User last name' },
-                        { name: 'role', type: 'VARCHAR(50)', constraints: 'DEFAULT \'user\'', description: 'User role (user, admin, etc.)' },
-                        { name: 'is_active', type: 'BOOLEAN', constraints: 'DEFAULT true', description: 'Account active status' },
-                        { name: 'created_at', type: 'TIMESTAMP', constraints: 'DEFAULT NOW()', description: 'Account creation timestamp' },
-                        { name: 'updated_at', type: 'TIMESTAMP', constraints: 'DEFAULT NOW()', description: 'Last update timestamp' }
-                    ],
-                    indexes: ['email', 'role', 'created_at'],
-                    relationships: ['One-to-Many with sessions', 'One-to-One with profiles']
-                },
-                {
-                    id: 'T-002',
-                    name: 'sessions',
-                    description: 'Manages user authentication sessions',
-                    columns: [
-                        { name: 'id', type: 'UUID', constraints: 'PRIMARY KEY', description: 'Unique session identifier' },
-                        { name: 'user_id', type: 'UUID', constraints: 'FOREIGN KEY REFERENCES users(id)', description: 'Reference to user' },
-                        { name: 'token', type: 'TEXT', constraints: 'NOT NULL', description: 'JWT token' },
-                        { name: 'expires_at', type: 'TIMESTAMP', constraints: 'NOT NULL', description: 'Session expiration time' },
-                        { name: 'created_at', type: 'TIMESTAMP', constraints: 'DEFAULT NOW()', description: 'Session creation time' }
-                    ],
-                    indexes: ['user_id', 'token', 'expires_at'],
-                    relationships: ['Many-to-One with users']
-                },
-                {
-                    id: 'T-003',
-                    name: 'profiles',
-                    description: 'Extended user profile information',
-                    columns: [
-                        { name: 'id', type: 'UUID', constraints: 'PRIMARY KEY', description: 'Unique profile identifier' },
-                        { name: 'user_id', type: 'UUID', constraints: 'FOREIGN KEY REFERENCES users(id) UNIQUE', description: 'Reference to user' },
-                        { name: 'bio', type: 'TEXT', constraints: 'NULL', description: 'User biography' },
-                        { name: 'avatar_url', type: 'VARCHAR(500)', constraints: 'NULL', description: 'Profile picture URL' },
-                        { name: 'preferences', type: 'JSONB', constraints: 'DEFAULT \'{}\'', description: 'User preferences as JSON' },
-                        { name: 'updated_at', type: 'TIMESTAMP', constraints: 'DEFAULT NOW()', description: 'Last update timestamp' }
-                    ],
-                    indexes: ['user_id'],
-                    relationships: ['One-to-One with users']
-                },
-                {
-                    id: 'T-004',
-                    name: 'roles',
-                    description: 'Role-based access control',
-                    columns: [
-                        { name: 'id', type: 'UUID', constraints: 'PRIMARY KEY', description: 'Unique role identifier' },
-                        { name: 'name', type: 'VARCHAR(50)', constraints: 'UNIQUE NOT NULL', description: 'Role name' },
-                        { name: 'permissions', type: 'JSONB', constraints: 'DEFAULT \'[]\'', description: 'Array of permissions' },
-                        { name: 'created_at', type: 'TIMESTAMP', constraints: 'DEFAULT NOW()', description: 'Role creation time' }
-                    ],
-                    indexes: ['name'],
-                    relationships: ['Referenced by users table']
+    const constructPrompt = (type, reqs, manualInstructions) => {
+        const diagramTypes = {
+            useCase: "Use Case Diagram. Define actors (User, Admin, etc) and use cases. Use proper 'actor' and 'usecase' syntax. Connect with -->.",
+            class: "Class Diagram. Define classes with attributes and methods. Use proper relationships (--|, *--, etc).",
+            sequence: "Sequence Diagram. Show the flow of a main feature (e.g. Login or Core Action). Use -> for messages.",
+            activity: "Activity Diagram. Show a workflow logic (start to end). Use :action; and if/else.",
+            state: "State Chart Diagram. Show states of a core entity (e.g. Order, User). Use [*] -> State.",
+            component: "Component Diagram. Show system components/modules and their interfaces/dependencies.",
+            deployment: "Deployment Diagram. Show nodes (Server, Database, Client) and artifacts."
+        }
+
+        return `
+        You are an expert UML architect.
+        TASK: Generate a VALID PlantUML ${diagramTypes[type]}
+        
+        System Description: ${reqs?.projectDescription}
+        Key Requirements: ${reqs?.functionalRequirements?.map(r => r.title)?.join(', ') || ''}
+        
+        ${manualInstructions ? `USER REQUEST: ${manualInstructions}` : ''}
+        
+        STRICT RULES:
+        - Output ONLY the PlantUML code.
+        - Start with @startuml
+        - End with @enduml
+        - NO markdown formatting (no \`\`\`).
+        - Use standard PlantUML syntax only.
+        - Keep it concise but professional.
+        `
+    }
+
+    const handleModify = async () => {
+        if (!customPrompt.trim()) return
+        setIsModifying(true)
+
+        const current = diagrams[activeDiagram]
+
+        try {
+            const prompt = `
+            You are a PlantUML Editor.
+            Update this diagram based on request: "${customPrompt}"
+            
+            Current PlantUML:
+            ${current.code}
+            
+            Return ONLY the updated PlantUML code.
+            Start with @startuml, end with @enduml.
+            `
+
+            const newCodeRaw = await geminiService.generateContent(prompt)
+            const newCode = cleanPlantUML(newCodeRaw)
+            const url = getPlantUMLUrl(newCode)
+
+            setDiagrams(prev => ({
+                ...prev,
+                [activeDiagram]: {
+                    ...prev[activeDiagram],
+                    code: newCode,
+                    url: url
                 }
-            ]
-        })
+            }))
+            setCustomPrompt('')
+        } catch (e) {
+            console.error("Modification failed", e)
+        } finally {
+            setIsModifying(false)
+        }
+    }
+
+    const handleCodeEdit = (e) => {
+        const newCode = e.target.value
+        setDiagrams(prev => ({
+            ...prev,
+            [activeDiagram]: { ...prev[activeDiagram], code: newCode }
+        }))
+    }
+
+    // Debounced render or manual "Update" button needed for text edits
+    // We'll use a manual button to avoid flicker
+    const handleManualRender = () => {
+        const current = diagrams[activeDiagram]
+        const url = getPlantUMLUrl(current.code)
+        setDiagrams(prev => ({
+            ...prev,
+            [activeDiagram]: { ...current, url: url }
+        }))
     }
 
     const handleComplete = () => {
         const designData = {
             requirements,
             architecture,
-            components,
             diagrams,
-            databaseSchema,
             generatedAt: new Date().toISOString()
         }
-
-        // Save to localStorage
         localStorage.setItem('sdlc_design', JSON.stringify(designData))
-
+        if (onComplete) onComplete(designData)
         setStep('complete')
-
-        if (onComplete) {
-            onComplete(designData)
-        }
     }
 
-    const exportDesign = () => {
-        const designData = {
-            architecture,
-            components,
-            diagrams,
-            databaseSchema
-        }
-
-        const blob = new Blob([JSON.stringify(designData, null, 2)], { type: 'application/json' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = 'system-design-specification.json'
-        a.click()
-    }
+    // Render Helpers
+    const renderHero = () => (
+        <div className={`agent-hero ${showHero ? 'visible' : 'hidden'}`}>
+            <div className="agent-title-section">
+                <div className="agent-badge">
+                    <span className="agent-emoji">🎨</span>
+                    <span>System Design Agent</span>
+                </div>
+                <h2>System Architecture & Design</h2>
+                <p>Comprehensive design based on requirements</p>
+            </div>
+            <button className="close-agent" onClick={onClose}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M18 6L6 18M6 6L18 18" />
+                </svg>
+            </button>
+        </div>
+    )
 
     if (step === 'loading') {
         return (
             <div className="agent-workspace">
-                <div className="agent-header">
-                    <div className="agent-title-section">
-                        <div className="agent-badge">
-                            <span className="agent-emoji">🎨</span>
-                            <span>System Design Agent</span>
-                        </div>
-                        <h2>Analyzing Requirements...</h2>
-                        <p>Generating system architecture and design</p>
-                    </div>
-                </div>
-                <div className="agent-content">
-                    <div className="loading-screen">
-                        <div className="loading-spinner-large"></div>
-                        <p>Analyzing your requirements and creating system design...</p>
-                    </div>
+                <div className="agent-content center-content">
+                    <div className="loading-spinner-large"></div>
+                    <p style={{ marginTop: 20 }}>Analyzing requirements...</p>
                 </div>
             </div>
         )
@@ -417,376 +289,167 @@ function DesignAgent({ onClose, onComplete }) {
 
     return (
         <div className="agent-workspace">
-            <div className="agent-header">
-                <div className="agent-title-section">
-                    <div className="agent-badge">
-                        <span className="agent-emoji">🎨</span>
-                        <span>System Design Agent</span>
-                    </div>
-                    <h2>System Architecture & Design</h2>
-                    <p>Comprehensive design based on your requirements</p>
-                </div>
-                <button className="close-agent" onClick={onClose}>
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M18 6L6 18M6 6L18 18" />
-                    </svg>
-                </button>
-            </div>
+            {renderHero()}
 
-            <div className="agent-content">
-                {/* Navigation Tabs */}
-                <div className="design-tabs">
+            <div
+                className={`agent-content ${!showHero ? 'expanded' : ''}`}
+                ref={contentRef}
+                onScroll={handleScroll}
+            >
+                {/* Tabs */}
+                <div className="design-tabs-container">
                     <button
-                        className={`design-tab ${step === 'architecture' ? 'active' : ''}`}
+                        className={`step-tab ${step === 'architecture' ? 'active' : ''}`}
                         onClick={() => setStep('architecture')}
                     >
                         🏗️ Architecture
                     </button>
                     <button
-                        className={`design-tab ${step === 'components' ? 'active' : ''}`}
-                        onClick={() => setStep('components')}
-                    >
-                        🧩 Components
-                    </button>
-                    <button
-                        className={`design-tab ${step === 'diagrams' ? 'active' : ''}`}
+                        className={`step-tab ${step === 'diagrams' ? 'active' : ''}`}
                         onClick={() => setStep('diagrams')}
                     >
                         📊 Diagrams
                     </button>
-                    <button
-                        className={`design-tab ${step === 'database' ? 'active' : ''}`}
-                        onClick={() => setStep('database')}
-                    >
-                        🗄️ Database
-                    </button>
                 </div>
 
-                {/* Architecture View */}
-                {step === 'architecture' && (
-                    <div className="step-container">
-                        <div className="step-header">
-                            <h3>System Architecture</h3>
-                            <p>High-level architecture design and technology stack</p>
-                        </div>
-
-                        <div className="architecture-card">
-                            <div className="architecture-type">
-                                <h4>Recommended Architecture</h4>
-                                <div className="architecture-badge">
-                                    {architecture.type === 'microservices' ? '🔷 Microservices' : '🔶 Monolithic'}
-                                </div>
+                {/* ARCHITECTURE VIEW */}
+                {step === 'architecture' && architecture && (
+                    <div className="step-container fade-in">
+                        <div className="architecture-card glass-panel">
+                            <div className="arch-header">
+                                <h3>{architecture.type} Architecture</h3>
+                                <div className="badge-primary">{architecture.type}</div>
                             </div>
-                            <p className="architecture-justification">{architecture.justification}</p>
+                            <p className="arch-justification">{architecture.justification}</p>
                         </div>
 
-                        <div className="layers-section">
-                            <h4>System Layers</h4>
-                            {architecture.layers.map((layer, index) => (
-                                <div key={index} className="layer-card">
-                                    <div className="layer-header">
-                                        <h5>{layer.name}</h5>
-                                        <div className="layer-number">{index + 1}</div>
-                                    </div>
-                                    <p className="layer-description">{layer.description}</p>
-                                    <div className="layer-tech">
-                                        <strong>Technologies:</strong>
-                                        <div className="tech-tags">
-                                            {layer.technologies.map((tech, idx) => (
-                                                <span key={idx} className="tech-tag">{tech}</span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div className="layer-responsibilities">
-                                        <strong>Responsibilities:</strong>
-                                        <ul>
-                                            {layer.responsibilities.map((resp, idx) => (
-                                                <li key={idx}>{resp}</li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* Components View */}
-                {step === 'components' && (
-                    <div className="step-container">
-                        <div className="step-header">
-                            <h3>System Components</h3>
-                            <p>Detailed breakdown of system components and their interactions</p>
-                        </div>
-
-                        <div className="components-grid">
-                            {components.map((component) => (
-                                <div key={component.id} className="component-card">
-                                    <div className="component-header">
-                                        <span className="component-id">{component.id}</span>
-                                        <h5>{component.name}</h5>
-                                    </div>
-                                    <p className="component-description">{component.description}</p>
-
-                                    <div className="component-section">
-                                        <strong>📋 Responsibilities:</strong>
-                                        <ul>
-                                            {component.responsibilities.map((resp, idx) => (
-                                                <li key={idx}>{resp}</li>
-                                            ))}
-                                        </ul>
-                                    </div>
-
-                                    <div className="component-section">
-                                        <strong>🔌 Interfaces:</strong>
-                                        <div className="interface-list">
-                                            {component.interfaces.map((iface, idx) => (
-                                                <code key={idx} className="interface-code">{iface}</code>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    <div className="component-section">
-                                        <strong>🔗 Dependencies:</strong>
-                                        <div className="dependency-tags">
-                                            {component.dependencies.map((dep, idx) => (
-                                                <span key={idx} className="dependency-tag">{dep}</span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* Diagrams View */}
-                {step === 'diagrams' && (
-                    <div className="step-container">
-                        <div className="step-header">
-                            <h3>UML Diagrams</h3>
-                            <p>Visual representations of system structure and behavior</p>
-                        </div>
-
-                        {/* Use Case Diagram */}
-                        <div className="diagram-section">
-                            <h4>📌 Use Case Diagram</h4>
-                            <p className="diagram-description">{diagrams.useCase.description}</p>
-
-                            <div className="diagram-content">
-                                <div className="actors-section">
-                                    <h5>Actors (Users)</h5>
-                                    {diagrams.useCase.actors.map((actor) => (
-                                        <div key={actor.id} className="actor-item">
-                                            <span className="actor-id">{actor.id}</span>
-                                            <div>
-                                                <strong>{actor.name}</strong>
-                                                <p>{actor.description}</p>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                <div className="usecases-section">
-                                    <h5>Use Cases</h5>
-                                    {diagrams.useCase.useCases.map((uc) => (
-                                        <div key={uc.id} className="usecase-item">
-                                            <span className="usecase-id">{uc.id}</span>
-                                            <div>
-                                                <strong>{uc.name}</strong>
-                                                <p><em>Actor:</em> {uc.actor}</p>
-                                                <p>{uc.description}</p>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Class Diagram */}
-                        <div className="diagram-section">
-                            <h4>🏛️ Class Diagram</h4>
-                            <p className="diagram-description">{diagrams.class.description}</p>
-
-                            <div className="classes-grid">
-                                {diagrams.class.classes.map((cls) => (
-                                    <div key={cls.id} className="class-card">
-                                        <div className="class-header">
-                                            <span className="class-id">{cls.id}</span>
-                                            <h5>{cls.name}</h5>
-                                        </div>
-
-                                        <div className="class-section">
-                                            <strong>Attributes:</strong>
-                                            <ul className="class-list">
-                                                {cls.attributes.map((attr, idx) => (
-                                                    <li key={idx}><code>{attr}</code></li>
-                                                ))}
-                                            </ul>
-                                        </div>
-
-                                        <div className="class-section">
-                                            <strong>Methods:</strong>
-                                            <ul className="class-list">
-                                                {cls.methods.map((method, idx) => (
-                                                    <li key={idx}><code>{method}</code></li>
-                                                ))}
-                                            </ul>
-                                        </div>
-
-                                        <div className="class-section">
-                                            <strong>Relationships:</strong>
-                                            <ul className="class-list">
-                                                {cls.relationships.map((rel, idx) => (
-                                                    <li key={idx}>{rel}</li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Sequence Diagram */}
-                        <div className="diagram-section">
-                            <h4>🔄 Sequence Diagrams</h4>
-                            <p className="diagram-description">{diagrams.sequence.description}</p>
-
-                            {diagrams.sequence.flows.map((flow) => (
-                                <div key={flow.id} className="sequence-card">
-                                    <div className="sequence-header">
-                                        <span className="sequence-id">{flow.id}</span>
-                                        <h5>{flow.name}</h5>
-                                    </div>
-                                    <p className="sequence-description">{flow.description}</p>
-                                    <div className="sequence-steps">
-                                        {flow.steps.map((step, idx) => (
-                                            <div key={idx} className="sequence-step">
-                                                <div className="step-number">{idx + 1}</div>
-                                                <div className="step-text">{step.replace(/^\d+\.\s*/, '')}</div>
-                                            </div>
+                        <div className="layers-grid">
+                            {architecture.layers?.map((layer, idx) => (
+                                <div key={idx} className="layer-card glass-panel interactive">
+                                    <div className="layer-number">{idx + 1}</div>
+                                    <h4>{layer.name}</h4>
+                                    <p>{layer.description}</p>
+                                    <div className="tech-tags">
+                                        {layer.technologies?.map(t => (
+                                            <span key={t} className="tag">{t}</span>
                                         ))}
                                     </div>
                                 </div>
                             ))}
                         </div>
+
+                        <div className="step-actions">
+                            <button className="btn-primary" onClick={() => setStep('diagrams')}>
+                                Proceed to Diagrams →
+                            </button>
+                        </div>
                     </div>
                 )}
 
-                {/* Database View */}
-                {step === 'database' && (
-                    <div className="step-container">
-                        <div className="step-header">
-                            <h3>Database Schema</h3>
-                            <p>Detailed database structure and relationships</p>
-                        </div>
-
-                        <div className="database-info">
-                            <h4>Database Type: {databaseSchema.type === 'relational' ? 'Relational (SQL)' : 'NoSQL'}</h4>
-                            <p className="db-justification">{databaseSchema.justification}</p>
-                        </div>
-
-                        <div className="tables-section">
-                            {databaseSchema.tables.map((table) => (
-                                <div key={table.id} className="table-card">
-                                    <div className="table-header">
-                                        <span className="table-id">{table.id}</span>
-                                        <h5>{table.name}</h5>
-                                    </div>
-                                    <p className="table-description">{table.description}</p>
-
-                                    <div className="columns-table">
-                                        <table>
-                                            <thead>
-                                                <tr>
-                                                    <th>Column Name</th>
-                                                    <th>Data Type</th>
-                                                    <th>Constraints</th>
-                                                    <th>Description</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {table.columns.map((col, idx) => (
-                                                    <tr key={idx}>
-                                                        <td><code>{col.name}</code></td>
-                                                        <td><code>{col.type}</code></td>
-                                                        <td><span className="constraint-badge">{col.constraints}</span></td>
-                                                        <td>{col.description}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-
-                                    <div className="table-meta">
-                                        <div>
-                                            <strong>Indexes:</strong> {table.indexes.join(', ')}
-                                        </div>
-                                        <div>
-                                            <strong>Relationships:</strong>
-                                            <ul>
-                                                {table.relationships.map((rel, idx) => (
-                                                    <li key={idx}>{rel}</li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    </div>
-                                </div>
+                {/* DIAGRAMS VIEW */}
+                {step === 'diagrams' && (
+                    <div className="step-container fade-in">
+                        <div className="diagrams-nav">
+                            {Object.entries(diagrams).map(([key, data]) => (
+                                <button
+                                    key={key}
+                                    className={`diagram-pill ${activeDiagram === key ? 'active' : ''}`}
+                                    onClick={() => setActiveDiagram(key)}
+                                >
+                                    {data.label}
+                                    {data.status === 'done' && <span className="status-dot success"></span>}
+                                    {data.status === 'loading' && <span className="status-dot loading"></span>}
+                                    {data.status === 'error' && <span className="status-dot error"></span>}
+                                </button>
                             ))}
                         </div>
-                    </div>
-                )}
 
-                {/* Complete View */}
-                {step === 'complete' && (
-                    <div className="step-container completion-screen">
-                        <div className="completion-icon">✅</div>
-                        <h3>System Design Complete!</h3>
-                        <p>Your comprehensive system design has been generated and saved.</p>
+                        <div className="diagram-workspace glass-panel">
+                            {/* Editor Column */}
+                            <div className="diagram-column editor-column">
+                                <div className="column-header">
+                                    <h4>PlantUML Code</h4>
+                                    <button className="btn-xs" onClick={handleManualRender}>
+                                        ⟳ Render
+                                    </button>
+                                </div>
+                                <textarea
+                                    className="code-editor-area"
+                                    value={diagrams[activeDiagram].code}
+                                    onChange={handleCodeEdit}
+                                    spellCheck="false"
+                                />
+                                <div className="prompt-box">
+                                    <input
+                                        type="text"
+                                        placeholder={`Modify ${diagrams[activeDiagram].label}... (e.g. "Add User node")`}
+                                        value={customPrompt}
+                                        onChange={e => setCustomPrompt(e.target.value)}
+                                        onKeyDown={e => e.key === 'Enter' && handleModify()}
+                                    />
+                                    <button
+                                        className="btn-send"
+                                        onClick={handleModify}
+                                        disabled={isModifying}
+                                    >
+                                        {isModifying ? '...' : '➤'}
+                                    </button>
+                                </div>
+                            </div>
 
-                        <div className="completion-summary">
-                            <div className="summary-stat">
-                                <div className="stat-number">{architecture.layers.length}</div>
-                                <div className="stat-label">System Layers</div>
+                            {/* Preview Column */}
+                            <div className="diagram-column preview-column">
+                                {diagrams[activeDiagram].status === 'loading' ? (
+                                    <div className="centered-state">
+                                        <div className="loading-spinner"></div>
+                                        <p>Generating Diagram...</p>
+                                    </div>
+                                ) : diagrams[activeDiagram].status === 'error' ? (
+                                    <div className="centered-state error">
+                                        <p style={{ fontWeight: 'bold' }}>⚠ Failed to generate</p>
+                                        <div style={{
+                                            fontSize: '0.85rem',
+                                            color: '#f87171',
+                                            background: 'rgba(255,0,0,0.1)',
+                                            padding: '8px',
+                                            borderRadius: '6px',
+                                            maxWidth: '90%',
+                                            fontFamily: 'monospace',
+                                            marginBottom: '10px'
+                                        }}>
+                                            {diagrams[activeDiagram].error || "Unknown Error"}
+                                        </div>
+                                        <button className="btn-secondary" onClick={() => generateDiagram(activeDiagram)}>
+                                            ⟳ Retry Generation
+                                        </button>
+                                    </div>
+                                ) : diagrams[activeDiagram].url ? (
+                                    <div className="preview-content">
+                                        <img
+                                            src={diagrams[activeDiagram].url}
+                                            alt="Diagram"
+                                        />
+                                        <div className="preview-actions">
+                                            <a href={diagrams[activeDiagram].url} target="_blank" rel="noreferrer" className="btn-icon">
+                                                ⤢ Fullscreen
+                                            </a>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="centered-state">
+                                        <p>No diagram yet</p>
+                                        <button className="btn-secondary" onClick={() => generateDiagram(activeDiagram)}>
+                                            Generate
+                                        </button>
+                                    </div>
+                                )}
                             </div>
-                            <div className="summary-stat">
-                                <div className="stat-number">{components.length}</div>
-                                <div className="stat-label">Components</div>
-                            </div>
-                            <div className="summary-stat">
-                                <div className="stat-number">{databaseSchema.tables.length}</div>
-                                <div className="stat-label">Database Tables</div>
-                            </div>
-                        </div>
-
-                        <div className="next-steps">
-                            <h4>🎯 What's Next?</h4>
-                            <p>Your system design is ready! You can now proceed to the <strong>Development Phase</strong> where the Development Agent will generate code based on this design.</p>
                         </div>
 
                         <div className="step-actions">
-                            <button className="btn-secondary" onClick={exportDesign}>
-                                📥 Export Design
-                            </button>
-                            <button className="btn-primary-action" onClick={onClose}>
-                                Close & Return to Dashboard
-                            </button>
+                            <button className="btn-secondary" onClick={() => setStep('architecture')}>← Back</button>
+                            <button className="btn-primary" onClick={handleComplete}>✅ Finalize Design</button>
                         </div>
-                    </div>
-                )}
-
-                {/* Action Buttons */}
-                {step !== 'complete' && step !== 'loading' && (
-                    <div className="step-actions">
-                        <button className="btn-secondary" onClick={exportDesign}>
-                            📥 Export Design
-                        </button>
-                        <button className="btn-primary-action" onClick={handleComplete}>
-                            Complete & Save Design
-                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                                <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                            </svg>
-                        </button>
                     </div>
                 )}
             </div>
