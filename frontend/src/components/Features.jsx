@@ -22,7 +22,7 @@ function Features() {
             ),
             color: '#8b5cf6',
             title: 'Professional Artifacts',
-            description: 'Auto-generate requirements docs, design specs, test plans, and deployment guides with industry standards.'
+            description: 'Auto-generate requirements docs, design specs, and test plans with industry standards.'
         },
         {
             icon: (

@@ -1,1032 +1,690 @@
-import { useState, useEffect } from 'react'
-import huggingFaceService from '../services/huggingFaceService'
-import { developmentPrompt } from '../utils/promptTemplates'
+import { useState, useEffect, useCallback } from 'react'
+import { useProject } from '../contexts/ProjectContext'
+import apiService from '../services/apiService'
+import './DevelopmentAgent.css'
 
 function DevelopmentAgent({ onClose, onComplete }) {
-    const [step, setStep] = useState('loading') // loading, techstack, structure, code, apis, review, complete
-    const [design, setDesign] = useState(null)
-    const [requirements, setRequirements] = useState(null)
-    const [techStack, setTechStack] = useState({
-        frontend: [],
-        backend: [],
-        database: [],
-        devops: [],
-        testing: []
-    })
-    const [folderStructure, setFolderStructure] = useState([])
-    const [codeSnippets, setCodeSnippets] = useState([])
-    const [apiContracts, setApiContracts] = useState([])
-    const [bestPractices, setBestPractices] = useState([])
+    const { currentProject, updateProject, refreshCurrentProject } = useProject()
 
+    // Phase Tracking
+    const [step, setStep] = useState('validation') // validation, techstack, structure, code, complete
+    const [apiKeyStatus, setApiKeyStatus] = useState({ checked: false, valid: true, message: 'Local LLM Active' })
+
+    // Data State
+    const [diagramsCheck, setDiagramsCheck] = useState({})
+    const [techStackOptions, setTechStackOptions] = useState([])
+    const [selectedStack, setSelectedStack] = useState(null)
+    const [isStackConfirmed, setIsStackConfirmed] = useState(false)
+
+    const [structure, setStructure] = useState(null)
+    const [isStructureConfirmed, setIsStructureConfirmed] = useState(false)
+    const [generateType, setGenerateType] = useState('Both') // Frontend, Backend, Both
+
+    const [selectedNode, setSelectedNode] = useState(null)
+    const [codeFiles, setCodeFiles] = useState([]) // [{ path, desc, code, status: 'pending'|'generating'|'done' }]
+    const [selectedFileIndex, setSelectedFileIndex] = useState(0)
+    const [selectedCodeType, setSelectedCodeType] = useState('Starter Template')
+    const [isCodeGenerating, setIsCodeGenerating] = useState(false)
+    const [isTabSwitching, setIsTabSwitching] = useState(false)
+    const [countdown, setCountdown] = useState(0)
+
+    // UI Loading State
+    const [loading, setLoading] = useState(false)
+    const [loadingMessage, setLoadingMessage] = useState('')
+
+    // 1. Initial Key Verification & Diagram Check & Persistent Data Load
     useEffect(() => {
-        // Load design and requirements from previous phases
-        const savedDesign = localStorage.getItem('sdlc_design')
-        const savedRequirements = localStorage.getItem('sdlc_requirements')
-
-        if (savedDesign) {
-            const designData = JSON.parse(savedDesign)
-            setDesign(designData)
-
-            if (savedRequirements) {
-                const reqData = JSON.parse(savedRequirements)
-                setRequirements(reqData)
+        const verify = async () => {
+            try {
+                const res = await apiService.verifyDevelopmentKey()
+                setApiKeyStatus({ checked: true, valid: true, message: 'API Key Verified' })
+            } catch (err) {
+                const msg = err.response?.data?.message || 'Invalid API key.'
+                setApiKeyStatus({ checked: true, valid: false, message: msg })
             }
-
-            generateDevelopmentPlan(designData)
-        } else {
-            // Create sample data for demo
-            const sampleDesign = {
-                architecture: { type: 'monolith', layers: [] }
-            }
-            setDesign(sampleDesign)
-            generateDevelopmentPlan(sampleDesign)
         }
-    }, [])
+        verify()
 
-    const generateDevelopmentPlan = async (designData) => {
+        if (currentProject?.design?.diagrams) {
+            const required = ['useCase', 'class', 'sequence', 'activity', 'state', 'component', 'deployment']
+            const status = {}
+            required.forEach(key => {
+                const diag = currentProject.design.diagrams[key]
+                status[key] = diag && (diag.status === 'done' || diag.code?.length > 10)
+            })
+            setDiagramsCheck(status)
+        }
+
+        // LOAD PERSISTED DATA
+        if (currentProject?.development) {
+            const dev = currentProject.development
+            if (dev.techStack) {
+                setSelectedStack(dev.techStack)
+                setIsStackConfirmed(true)
+            }
+            if (dev.structure) {
+                setStructure(dev.structure)
+                setIsStructureConfirmed(true)
+            }
+            if (dev.codeFiles && dev.codeFiles.length > 0) {
+                setCodeFiles(dev.codeFiles.map(f => ({
+                    path: f.path,
+                    code: f.code,
+                    desc: f.path.split('/').pop(),
+                    status: 'done'
+                })))
+                setStep('code')
+            } else if (dev.structure) {
+                setStep('structure')
+            } else if (dev.techStack) {
+                setStep('techstack')
+            }
+        }
+    }, [currentProject])
+
+    // Delay Timer Effect
+    useEffect(() => {
+        if (countdown > 0) {
+            const timer = setTimeout(() => setCountdown(countdown - 1), 1000)
+            return () => clearTimeout(timer)
+        }
+    }, [countdown])
+
+    // Helpers
+    const isAllDiagramsReady = () => {
+        const required = ['useCase', 'class', 'sequence', 'activity', 'state', 'component', 'deployment']
+        return required.every(key => diagramsCheck[key])
+    }
+
+    const startTechStackPhase = () => {
+        if (!isAllDiagramsReady()) return
+        if (window.confirm("Confirm that all design diagrams are finalized and approved?")) {
+            setStep('techstack')
+            generateTechStack()
+        }
+    }
+
+    const generateTechStack = async () => {
+        setLoading(true)
+        setLoadingMessage('Generating Tech Stack Options...')
         try {
-            // Get requirements from localStorage
-            const savedRequirements = localStorage.getItem('sdlc_requirements')
-            const requirements = savedRequirements ? JSON.parse(savedRequirements) : {}
-            
-            // Generate prompt for Hugging Face
-            const prompt = developmentPrompt(requirements, designData)
-            
-            // Call Hugging Face AI
-            const result = await huggingFaceService.generateJSON(prompt)
-            
-            // Set all generated development artifacts
-            if (result.techStack) {
-                setTechStack(result.techStack)
+            const res = await apiService.generateTechStack(currentProject._id)
+            if (res.data.success) {
+                setTechStackOptions(res.data.data.options)
             }
-            if (result.folderStructure) {
-                setFolderStructure(result.folderStructure)
-            }
-            if (result.codeSnippets) {
-                setCodeSnippets(result.codeSnippets)
-            }
-            if (result.apiContracts) {
-                setApiContracts(result.apiContracts)
-            }
-            if (result.bestPractices) {
-                setBestPractices(result.bestPractices)
-            }
-            
-            setStep('techstack')
-        } catch (error) {
-            console.error('Error generating development plan:', error)
-            alert('AI development generation failed. Using fallback plan. Error: ' + error.message)
-            
-            // Fallback to basic design on error
-            generateTechStack(designData)
-            generateFolderStructure(designData)
-            generateCodeSnippets(designData)
-            generateAPIContracts(designData)
-            generateBestPractices(designData)
-            setStep('techstack')
+        } catch (err) {
+            alert(err.message || 'Failed to generate tech stack')
+        } finally {
+            setLoading(false)
         }
     }
 
-    const generateTechStack = (designData) => {
-        const isMicroservices = designData.architecture?.type === 'microservices'
+    const confirmTechStack = () => {
+        if (!selectedStack) return
+        if (window.confirm("Confirm selected tech stack?")) {
+            setIsStackConfirmed(true)
+            setStep('structure')
+        }
+    }
 
-        setTechStack({
-            frontend: [
-                { name: 'React 18+', purpose: 'UI library for building interactive interfaces', why: 'Component-based, large ecosystem, excellent performance' },
-                { name: 'Vite', purpose: 'Build tool and dev server', why: 'Fast HMR, optimized builds, modern tooling' },
-                { name: 'React Router', purpose: 'Client-side routing', why: 'Standard routing solution for React apps' },
-                { name: 'Axios', purpose: 'HTTP client for API calls', why: 'Promise-based, interceptors, easy error handling' },
-                { name: 'Zustand / Redux Toolkit', purpose: 'State management', why: 'Simple yet powerful state management' }
-            ],
-            backend: [
-                { name: 'Node.js', purpose: 'JavaScript runtime', why: 'Non-blocking I/O, JavaScript everywhere, huge ecosystem' },
-                { name: 'Express.js', purpose: 'Web framework', why: 'Minimalist, flexible, widely adopted' },
-                { name: 'TypeScript', purpose: 'Type safety', why: 'Catch errors early, better IDE support, maintainable code' },
-                { name: 'JWT', purpose: 'Authentication', why: 'Stateless, secure, industry standard' },
-                { name: 'bcrypt', purpose: 'Password hashing', why: 'Secure password storage with salt' }
-            ],
-            database: [
-                { name: 'PostgreSQL', purpose: 'Primary database', why: 'ACID compliant, powerful queries, reliable' },
-                { name: 'Prisma', purpose: 'ORM', why: 'Type-safe database access, migrations, great DX' },
-                { name: 'Redis', purpose: 'Caching & sessions', why: 'In-memory speed, pub/sub, session storage' }
-            ],
-            devops: [
-                { name: 'Docker', purpose: 'Containerization', why: 'Consistent environments, easy deployment' },
-                { name: 'GitHub Actions', purpose: 'CI/CD', why: 'Integrated with Git, free for public repos' },
-                { name: 'Nginx', purpose: 'Reverse proxy', why: 'High performance, load balancing' },
-                { name: 'PM2', purpose: 'Process manager', why: 'Keep Node.js apps running, clustering' }
-            ],
-            testing: [
-                { name: 'Jest', purpose: 'Unit testing', why: 'Fast, snapshot testing, mocking' },
-                { name: 'React Testing Library', purpose: 'Component testing', why: 'User-centric testing approach' },
-                { name: 'Supertest', purpose: 'API testing', why: 'Easy HTTP assertions' },
-                { name: 'Playwright', purpose: 'E2E testing', why: 'Cross-browser, reliable, fast' }
-            ]
+    const generateStructure = async () => {
+        setLoading(true)
+        setLoadingMessage(`Generating ${generateType} Structure...`)
+        try {
+            const res = await apiService.generateStructure(currentProject._id, selectedStack, generateType)
+            if (res.data.success) {
+                setStructure(res.data.data.structure)
+            }
+        } catch (err) {
+            alert(err.message || 'Failed to generate structure')
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const confirmStructure = async (silent = false) => {
+        if (!structure) return
+        if (!silent && !window.confirm("Finalize and sync folder structure with code generator?")) return;
+
+        setIsTabSwitching(true)
+        setIsStructureConfirmed(true)
+
+        // Flatten structure to list of files for generation
+        const files = []
+        const traverse = (node, path = '') => {
+            const currentPath = path ? (path === node.name ? path : `${path}/${node.name}`) : node.name
+            if (node.type === 'file') {
+                files.push({ path: currentPath, desc: node.description || node.name, code: '', status: 'pending' })
+            } else if (node.children) {
+                // Sort children so folders appear first, then files
+                const sortedChildren = [...node.children].sort((a, b) => (a.type === 'folder' ? -1 : 1))
+                sortedChildren.forEach(child => traverse(child, currentPath))
+            }
+        }
+        traverse(structure)
+
+        // Match existing code/status for files that haven't changed path
+        const mergedFiles = files.map(newF => {
+            const existing = codeFiles.find(oldF => oldF.path === newF.path)
+            return existing ? { ...newF, code: existing.code, status: existing.status } : newF
         })
-    }
 
-    const generateFolderStructure = (designData) => {
-        setFolderStructure([
-            {
-                name: 'project-root',
-                type: 'folder',
-                description: 'Root directory of the project',
-                children: [
-                    {
-                        name: 'frontend',
-                        type: 'folder',
-                        description: 'React frontend application',
-                        children: [
-                            { name: 'public', type: 'folder', description: 'Static assets' },
-                            {
-                                name: 'src',
-                                type: 'folder',
-                                description: 'Source code',
-                                children: [
-                                    { name: 'components', type: 'folder', description: 'Reusable UI components' },
-                                    { name: 'pages', type: 'folder', description: 'Page components' },
-                                    { name: 'hooks', type: 'folder', description: 'Custom React hooks' },
-                                    { name: 'services', type: 'folder', description: 'API service functions' },
-                                    { name: 'utils', type: 'folder', description: 'Utility functions' },
-                                    { name: 'store', type: 'folder', description: 'State management' },
-                                    { name: 'types', type: 'folder', description: 'TypeScript types' },
-                                    { name: 'App.jsx', type: 'file', description: 'Main app component' },
-                                    { name: 'main.jsx', type: 'file', description: 'Entry point' }
-                                ]
-                            },
-                            { name: 'package.json', type: 'file', description: 'Dependencies' },
-                            { name: 'vite.config.js', type: 'file', description: 'Vite configuration' }
-                        ]
-                    },
-                    {
-                        name: 'backend',
-                        type: 'folder',
-                        description: 'Node.js backend API',
-                        children: [
-                            {
-                                name: 'src',
-                                type: 'folder',
-                                description: 'Source code',
-                                children: [
-                                    { name: 'controllers', type: 'folder', description: 'Request handlers' },
-                                    { name: 'services', type: 'folder', description: 'Business logic' },
-                                    { name: 'models', type: 'folder', description: 'Database models' },
-                                    { name: 'routes', type: 'folder', description: 'API routes' },
-                                    { name: 'middleware', type: 'folder', description: 'Custom middleware' },
-                                    { name: 'utils', type: 'folder', description: 'Utility functions' },
-                                    { name: 'config', type: 'folder', description: 'Configuration files' },
-                                    { name: 'types', type: 'folder', description: 'TypeScript types' },
-                                    { name: 'server.js', type: 'file', description: 'Server entry point' }
-                                ]
-                            },
-                            { name: 'prisma', type: 'folder', description: 'Database schema & migrations' },
-                            { name: 'tests', type: 'folder', description: 'Test files' },
-                            { name: 'package.json', type: 'file', description: 'Dependencies' },
-                            { name: '.env.example', type: 'file', description: 'Environment variables template' }
-                        ]
-                    },
-                    { name: 'docker-compose.yml', type: 'file', description: 'Docker services configuration' },
-                    { name: 'README.md', type: 'file', description: 'Project documentation' },
-                    { name: '.gitignore', type: 'file', description: 'Git ignore rules' }
-                ]
+        setCodeFiles(mergedFiles)
+
+        // AUTO-SAVE to DB
+        try {
+            const devData = {
+                techStack: selectedStack,
+                structure: structure,
+                codeFiles: mergedFiles.map(f => ({ path: f.path, code: f.code })),
+                completedAt: null
             }
-        ])
-    }
-
-    const generateCodeSnippets = (designData) => {
-        setCodeSnippets([
-            {
-                id: 'CS-001',
-                title: 'User Model (Prisma Schema)',
-                language: 'prisma',
-                description: 'Database schema for User entity',
-                code: `model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  firstName String
-  lastName  String
-  role      String   @default("user")
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  sessions  Session[]
-  profile   Profile?
-
-  @@index([email])
-  @@index([role])
-}`
-            },
-            {
-                id: 'CS-002',
-                title: 'Authentication Controller',
-                language: 'javascript',
-                description: 'Handles user registration and login',
-                code: `import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
-import { prisma } from '../config/database.js';
-
-export const register = async (req, res) => {
-  try {
-    const { email, password, firstName, lastName } = req.body;
-
-    // Check if user exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email }
-    });
-
-    if (existingUser) {
-      return res.status(400).json({ 
-        error: 'User already exists' 
-      });
-    }
-
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Create user
-    const user = await prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-        firstName,
-        lastName
-      }
-    });
-
-    // Generate JWT
-    const token = jwt.sign(
-      { userId: user.id, email: user.email },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    res.status(201).json({
-      message: 'User registered successfully',
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName
-      }
-    });
-  } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-};`
-            },
-            {
-                id: 'CS-003',
-                title: 'Authentication Middleware',
-                language: 'javascript',
-                description: 'Protects routes requiring authentication',
-                code: `import jwt from 'jsonwebtoken';
-
-export const authenticate = async (req, res, next) => {
-  try {
-    // Get token from header
-    const token = req.headers.authorization?.split(' ')[1];
-
-    if (!token) {
-      return res.status(401).json({ 
-        error: 'No token provided' 
-      });
-    }
-
-    // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
-    // Attach user info to request
-    req.user = decoded;
-    next();
-  } catch (error) {
-    return res.status(401).json({ 
-      error: 'Invalid or expired token' 
-    });
-  }
-};`
-            },
-            {
-                id: 'CS-004',
-                title: 'API Service (Frontend)',
-                language: 'javascript',
-                description: 'Axios service for API calls',
-                code: `import axios from 'axios';
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
-
-// Create axios instance
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json'
-  }
-});
-
-// Add token to requests
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = \`Bearer \${token}\`;
-  }
-  return config;
-});
-
-// Handle errors
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      window.location.href = '/login';
-    }
-    return Promise.reject(error);
-  }
-);
-
-export const authService = {
-  register: (data) => api.post('/auth/register', data),
-  login: (data) => api.post('/auth/login', data),
-  logout: () => api.post('/auth/logout')
-};
-
-export default api;`
-            },
-            {
-                id: 'CS-005',
-                title: 'React Component Example',
-                language: 'jsx',
-                description: 'Login form component with validation',
-                code: `import { useState } from 'react';
-import { authService } from '../services/api';
-
-function LoginForm() {
-  const [formData, setFormData] = useState({
-    email: '',
-    password: ''
-  });
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-
-    try {
-      const response = await authService.login(formData);
-      localStorage.setItem('token', response.data.token);
-      window.location.href = '/dashboard';
-    } catch (err) {
-      setError(err.response?.data?.error || 'Login failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="login-form">
-      <h2>Login</h2>
-      
-      {error && <div className="error">{error}</div>}
-      
-      <input
-        type="email"
-        placeholder="Email"
-        value={formData.email}
-        onChange={(e) => setFormData({
-          ...formData, 
-          email: e.target.value
-        })}
-        required
-      />
-      
-      <input
-        type="password"
-        placeholder="Password"
-        value={formData.password}
-        onChange={(e) => setFormData({
-          ...formData, 
-          password: e.target.value
-        })}
-        required
-      />
-      
-      <button type="submit" disabled={loading}>
-        {loading ? 'Logging in...' : 'Login'}
-      </button>
-    </form>
-  );
-}
-
-export default LoginForm;`
-            },
-            {
-                id: 'CS-006',
-                title: 'Environment Configuration',
-                language: 'bash',
-                description: 'Environment variables template',
-                code: `# Database
-DATABASE_URL="postgresql://user:password@localhost:5432/mydb"
-
-# JWT
-JWT_SECRET="your-super-secret-jwt-key-change-this"
-
-# Redis
-REDIS_URL="redis://localhost:6379"
-
-# Server
-PORT=3000
-NODE_ENV=development
-
-# Frontend URL (for CORS)
-FRONTEND_URL="http://localhost:5173"
-
-# Email (optional)
-SMTP_HOST="smtp.gmail.com"
-SMTP_PORT=587
-SMTP_USER="your-email@gmail.com"
-SMTP_PASS="your-app-password"`
-            }
-        ])
-    }
-
-    const generateAPIContracts = (designData) => {
-        setApiContracts([
-            {
-                id: 'API-001',
-                endpoint: 'POST /api/auth/register',
-                description: 'Register a new user account',
-                request: {
-                    body: {
-                        email: 'string (required, valid email)',
-                        password: 'string (required, min 8 chars)',
-                        firstName: 'string (required)',
-                        lastName: 'string (required)'
-                    }
-                },
-                response: {
-                    success: {
-                        status: 201,
-                        body: {
-                            message: 'User registered successfully',
-                            token: 'JWT token string',
-                            user: {
-                                id: 'uuid',
-                                email: 'string',
-                                firstName: 'string',
-                                lastName: 'string'
-                            }
-                        }
-                    },
-                    error: {
-                        status: 400,
-                        body: {
-                            error: 'User already exists'
-                        }
-                    }
-                }
-            },
-            {
-                id: 'API-002',
-                endpoint: 'POST /api/auth/login',
-                description: 'Authenticate user and get token',
-                request: {
-                    body: {
-                        email: 'string (required)',
-                        password: 'string (required)'
-                    }
-                },
-                response: {
-                    success: {
-                        status: 200,
-                        body: {
-                            message: 'Login successful',
-                            token: 'JWT token string',
-                            user: {
-                                id: 'uuid',
-                                email: 'string',
-                                firstName: 'string',
-                                lastName: 'string',
-                                role: 'string'
-                            }
-                        }
-                    },
-                    error: {
-                        status: 401,
-                        body: {
-                            error: 'Invalid credentials'
-                        }
-                    }
-                }
-            },
-            {
-                id: 'API-003',
-                endpoint: 'GET /api/users/:id',
-                description: 'Get user profile by ID',
-                authentication: 'Required (Bearer token)',
-                request: {
-                    params: {
-                        id: 'uuid (user ID)'
-                    }
-                },
-                response: {
-                    success: {
-                        status: 200,
-                        body: {
-                            id: 'uuid',
-                            email: 'string',
-                            firstName: 'string',
-                            lastName: 'string',
-                            role: 'string',
-                            profile: {
-                                bio: 'string',
-                                avatar: 'string (URL)'
-                            }
-                        }
-                    },
-                    error: {
-                        status: 404,
-                        body: {
-                            error: 'User not found'
-                        }
-                    }
-                }
-            },
-            {
-                id: 'API-004',
-                endpoint: 'PUT /api/users/:id',
-                description: 'Update user profile',
-                authentication: 'Required (Bearer token)',
-                request: {
-                    params: {
-                        id: 'uuid (user ID)'
-                    },
-                    body: {
-                        firstName: 'string (optional)',
-                        lastName: 'string (optional)',
-                        bio: 'string (optional)',
-                        avatar: 'string (optional, URL)'
-                    }
-                },
-                response: {
-                    success: {
-                        status: 200,
-                        body: {
-                            message: 'Profile updated successfully',
-                            user: {
-                                id: 'uuid',
-                                email: 'string',
-                                firstName: 'string',
-                                lastName: 'string'
-                            }
-                        }
-                    }
-                }
-            }
-        ])
-    }
-
-    const generateBestPractices = (designData) => {
-        setBestPractices([
-            {
-                category: 'Code Organization',
-                icon: '📁',
-                practices: [
-                    'Follow the Single Responsibility Principle - one file, one purpose',
-                    'Keep components small and focused (< 200 lines)',
-                    'Use meaningful and descriptive names for files and functions',
-                    'Group related files together in folders',
-                    'Separate business logic from UI components'
-                ]
-            },
-            {
-                category: 'Security',
-                icon: '🔒',
-                practices: [
-                    'Never store passwords in plain text - always hash with bcrypt',
-                    'Use environment variables for sensitive data',
-                    'Implement rate limiting on authentication endpoints',
-                    'Validate and sanitize all user inputs',
-                    'Use HTTPS in production',
-                    'Implement CORS properly',
-                    'Keep dependencies updated'
-                ]
-            },
-            {
-                category: 'Error Handling',
-                icon: '⚠️',
-                practices: [
-                    'Always use try-catch blocks for async operations',
-                    'Return meaningful error messages to clients',
-                    'Log errors on the server for debugging',
-                    'Don\'t expose sensitive information in error messages',
-                    'Use HTTP status codes correctly (200, 400, 401, 404, 500)'
-                ]
-            },
-            {
-                category: 'Performance',
-                icon: '⚡',
-                practices: [
-                    'Use database indexes on frequently queried fields',
-                    'Implement caching with Redis for expensive operations',
-                    'Paginate large data sets',
-                    'Use lazy loading for components',
-                    'Optimize images and assets',
-                    'Minimize bundle size with code splitting'
-                ]
-            },
-            {
-                category: 'Testing',
-                icon: '🧪',
-                practices: [
-                    'Write unit tests for business logic',
-                    'Test API endpoints with integration tests',
-                    'Aim for at least 70% code coverage',
-                    'Test edge cases and error scenarios',
-                    'Use meaningful test descriptions',
-                    'Keep tests independent and isolated'
-                ]
-            },
-            {
-                category: 'Git & Version Control',
-                icon: '🔀',
-                practices: [
-                    'Write clear, descriptive commit messages',
-                    'Use feature branches for new development',
-                    'Review code before merging to main',
-                    'Keep commits small and focused',
-                    'Use .gitignore to exclude sensitive files',
-                    'Tag releases with semantic versioning'
-                ]
-            }
-        ])
-    }
-
-    const handleComplete = () => {
-        const developmentData = {
-            design,
-            requirements,
-            techStack,
-            folderStructure,
-            codeSnippets,
-            apiContracts,
-            bestPractices,
-            generatedAt: new Date().toISOString()
+            await apiService.saveDevelopment(currentProject._id, devData)
+        } catch (err) {
+            console.error("Auto-sync failed", err)
         }
 
-        localStorage.setItem('sdlc_development', JSON.stringify(developmentData))
-        setStep('complete')
-
-        if (onComplete) {
-            onComplete(developmentData)
+        if (!silent) {
+            setTimeout(() => {
+                setStep('code')
+                setIsTabSwitching(false)
+            }, 600)
+        } else {
+            setIsTabSwitching(false)
         }
     }
 
-    const exportDevelopmentPlan = () => {
-        const data = {
-            techStack,
-            folderStructure,
-            codeSnippets,
-            apiContracts,
-            bestPractices
+    const handleAddNode = (type) => {
+        if (isStructureConfirmed) {
+            alert("Structure is finalized and locked. No more modifications allowed.")
+            return
         }
+        if (!selectedNode) {
+            alert("Please select a folder first")
+            return
+        }
+        if (selectedNode.type !== 'folder') {
+            alert("Cannot add items to a file. Please select a folder.")
+            return
+        }
+        const name = window.prompt(`Enter ${type} name:`)
+        if (!name) return
 
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = 'development-plan.json'
-        a.click()
+        const newNode = { name, type, children: type === 'folder' ? [] : undefined, description: name }
+
+        const updateTree = (node) => {
+            if (node === selectedNode) {
+                return { ...node, children: [...(node.children || []), newNode] }
+            }
+            if (node.children) {
+                return { ...node, children: node.children.map(updateTree) }
+            }
+            return node
+        }
+        const newStructure = updateTree(structure)
+        setStructure(newStructure)
+        // Note: Do NOT auto-set isStructureConfirmed here anymore, let user confirm explicitly
     }
 
-    const copyCode = (code) => {
-        navigator.clipboard.writeText(code)
-        alert('Code copied to clipboard!')
+    const handleDeleteNode = () => {
+        if (isStructureConfirmed) return
+        if (!selectedNode || selectedNode.name === 'root') return
+        if (!window.confirm(`Delete ${selectedNode.name} and all its contents?`)) return
+
+        const deleteFromTree = (node) => {
+            if (node.children) {
+                const filtered = node.children.filter(c => c !== selectedNode)
+                if (filtered.length !== node.children.length) {
+                    return { ...node, children: filtered }
+                }
+                return { ...node, children: node.children.map(deleteFromTree) }
+            }
+            return node
+        }
+        setStructure(deleteFromTree(structure))
+        setSelectedNode(null)
     }
 
-    if (step === 'loading') {
-        return (
-            <div className="agent-workspace">
-                <div className="agent-header">
-                    <div className="agent-title-section">
-                        <div className="agent-badge">
-                            <span className="agent-emoji">💻</span>
-                            <span>Development Agent</span>
+    const handleRenameNode = () => {
+        if (isStructureConfirmed) return
+        if (!selectedNode) return
+        const newName = window.prompt("Enter new name:", selectedNode.name)
+        if (!newName) return
+
+        const renameInTree = (node) => {
+            if (node === selectedNode) {
+                return { ...node, name: newName }
+            }
+            if (node.children) {
+                return { ...node, children: node.children.map(renameInTree) }
+            }
+            return node
+        }
+        setStructure(renameInTree(structure))
+    }
+
+    const startCodeGeneration = async () => {
+        setIsCodeGenerating(true)
+        const updatedFiles = [...codeFiles]
+
+        for (let i = 0; i < updatedFiles.length; i++) {
+            const file = updatedFiles[i]
+            if (file.status === 'done') continue
+
+            // Clear error status if retrying
+            if (file.status === 'error') {
+                file.status = 'pending'
+            }
+
+            // PACING: 26s delay required for external free API rate limits
+            // Only delay if we are actually starting a generation (not skipping done)
+            if (i > 0 && updatedFiles[i - 1].status === 'done') {
+                setCountdown(26)
+                await new Promise(r => setTimeout(r, 26000))
+                setCountdown(0)
+            }
+
+            file.status = 'generating'
+            setSelectedFileIndex(i)
+            setCodeFiles([...updatedFiles])
+
+            try {
+                const res = await apiService.generateCode(
+                    currentProject._id,
+                    file.path,
+                    file.desc,
+                    selectedStack,
+                    selectedCodeType,
+                    currentProject.design.diagrams,
+                    structure // Pass the confirmed structure here
+                )
+
+                if (res.data.success) {
+                    let cleanCode = res.data.code;
+                    // Remove markdown blocks if AI included them
+                    if (cleanCode.includes('```')) {
+                        cleanCode = cleanCode.replace(/```[a-z]*\n?/gi, '').replace(/```\n?/gi, '').trim();
+                    }
+                    file.code = cleanCode;
+                    file.status = 'done';
+                } else {
+                    file.status = 'error'
+                }
+            } catch (err) {
+                console.error(err)
+                file.status = 'error'
+                // Handle 429 specifically (though rare on local)
+                if (err.response?.status === 429) {
+                    setCountdown(5)
+                    await new Promise(r => setTimeout(r, 5000))
+                    i-- // Retry this file
+                    continue
+                }
+            }
+            setCodeFiles([...updatedFiles])
+        }
+        setIsCodeGenerating(false)
+    }
+
+    const finalizeDevelopment = async (shouldComplete = true) => {
+        if (shouldComplete && !window.confirm("Finalize Development Phase?")) return;
+
+        setLoading(true)
+        setLoadingMessage('Saving development progress...')
+        try {
+            const devData = {
+                techStack: selectedStack,
+                structure: structure,
+                codeFiles: codeFiles.map(f => ({ path: f.path, code: f.code })),
+                completedAt: shouldComplete ? new Date().toISOString() : null
+            }
+            await apiService.saveDevelopment(currentProject._id, devData)
+
+            if (shouldComplete) {
+                await updateProject(currentProject._id, { status: 'testing' })
+                await refreshCurrentProject()
+                setStep('complete')
+                setTimeout(() => onComplete(devData), 2000)
+            } else {
+                alert('Progress synced successfully!')
+            }
+        } catch (err) {
+            alert('Failed to save development data')
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    // Render Components
+    const renderValidation = () => (
+        <div className="validation-card">
+            <h3>Diagram Validation</h3>
+            <p>Ensure all required design diagrams are generated before starting development.</p>
+
+            <div className="checklist">
+                {['useCase', 'class', 'sequence', 'activity', 'state', 'component', 'deployment'].map(key => (
+                    <div key={key} className="checklist-item">
+                        <span className="capitalize">{key.replace(/([A-Z])/g, ' $1')} Diagram</span>
+                        <span className={`status-badge ${diagramsCheck[key] ? 'generated' : 'missing'}`}>
+                            {diagramsCheck[key] ? '✓ Generated' : '✗ Missing'}
+                        </span>
+                    </div>
+                ))}
+            </div>
+
+            {!apiKeyStatus.valid && apiKeyStatus.checked && (
+                <div className="error-box" style={{ marginTop: 20, color: '#ff453a', background: 'rgba(255,69,58,0.1)', padding: 15, borderRadius: 8 }}>
+                    <strong>Error:</strong> {apiKeyStatus.message}
+                </div>
+            )}
+
+            <div style={{ marginTop: 32, display: 'flex', gap: 16 }}>
+                <button className="dev-btn dev-btn-secondary" onClick={onClose}>Go Back to Design</button>
+                <button
+                    className="dev-btn dev-btn-primary"
+                    disabled={!isAllDiagramsReady() || !apiKeyStatus.valid}
+                    onClick={startTechStackPhase}
+                >
+                    Yes, Proceed to Development
+                </button>
+            </div>
+            {!isAllDiagramsReady() && (
+                <p style={{ color: '#ff453a', fontSize: 13, marginTop: 12 }}>
+                    * Development phase cannot begin. Please complete all required design diagrams.
+                </p>
+            )}
+        </div>
+    )
+
+    const renderTechStack = () => (
+        <div className="step-content">
+            <div className="step-header">
+                <h3>Select Technology Stack</h3>
+                <p>Choose the foundation for your application generation.</p>
+            </div>
+
+            {techStackOptions.length === 0 ? (
+                <div className="centered-state">
+                    <button className="dev-btn dev-btn-primary" onClick={generateTechStack}>Generate Tech Stack Options</button>
+                </div>
+            ) : (
+                <>
+                    <div className="tech-options-grid">
+                        {techStackOptions.map((opt, idx) => (
+                            <div
+                                key={idx}
+                                className={`tech-card ${selectedStack?.name === opt.name ? 'selected' : ''}`}
+                                onClick={() => setSelectedStack(opt)}
+                            >
+                                <h3>{opt.name}</h3>
+                                <div className="tech-detail"><span className="tech-label">Frontend:</span> <span>{opt.frontend}</span></div>
+                                <div className="tech-detail"><span className="tech-label">Backend:</span> <span>{opt.backend}</span></div>
+                                <div className="tech-detail"><span className="tech-label">Database:</span> <span>{opt.database}</span></div>
+                                <div className="tech-detail"><span className="tech-label">Auth:</span> <span>{opt.auth}</span></div>
+                                <div className="tech-detail"><span className="tech-label">Deployment:</span> <span>{opt.deployment}</span></div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="step-actions" style={{ marginTop: 32, display: 'flex', gap: 16 }}>
+                        <button className="dev-btn dev-btn-secondary" onClick={() => generateTechStack()}>Regenerate Options</button>
+                        <button className="dev-btn dev-btn-primary" disabled={!selectedStack} onClick={confirmTechStack}>Confirm & Proceed</button>
+                    </div>
+                </>
+            )}
+        </div>
+    )
+
+    const renderStructure = () => (
+        <div className="step-content">
+            <div className="step-header">
+                <h3>Project Structure</h3>
+                <p>Define the folder and file hierarchy for the codebase.</p>
+            </div>
+
+            {!structure ? (
+                <div className="config-box glass-panel" style={{ padding: 24, borderRadius: 16, maxWidth: 500, margin: '0 auto' }}>
+                    <h4 style={{ marginBottom: 16 }}>What do you want to generate?</h4>
+                    <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
+                        {['Frontend', 'Backend', 'Both'].map(t => (
+                            <button
+                                key={t}
+                                className={`dev-btn ${generateType === t ? 'dev-btn-primary' : 'dev-btn-secondary'}`}
+                                onClick={() => setGenerateType(t)}
+                            >
+                                {t}
+                            </button>
+                        ))}
+                    </div>
+                    <button className="dev-btn dev-btn-primary" style={{ width: '100%' }} onClick={generateStructure}>Generate Structure</button>
+                </div>
+            ) : (
+                <div className="structure-container">
+                    <div className="structure-tree">
+                        <div className="tree-header" style={{ marginBottom: 12, fontSize: 13, color: '#00f2ff' }}>📁 ROOD DIRECTORY</div>
+                        {renderTree(structure)}
+                    </div>
+                    <div className="structure-actions glass-panel" style={{ padding: 24, borderRadius: 12 }}>
+                        <h4>Modify Structure</h4>
+                        <p style={{ fontSize: 13, color: 'var(--dev-text-dim)' }}>
+                            {isStructureConfirmed ? "✓ Structure Locked & Finalized" : "You can add, delete or rename folders and files."}
+                        </p>
+
+                        {!isStructureConfirmed && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 20 }}>
+                                <button className="dev-btn dev-btn-secondary" style={{ fontSize: 13 }} onClick={() => handleAddNode('folder')}>Add Folder</button>
+                                <button className="dev-btn dev-btn-secondary" style={{ fontSize: 13 }} onClick={() => handleAddNode('file')}>Add File</button>
+                                <button className="dev-btn dev-btn-secondary" style={{ fontSize: 13 }} onClick={handleRenameNode}>Rename</button>
+                                <button className="dev-btn dev-btn-secondary" style={{ fontSize: 13, color: '#ff453a' }} onClick={handleDeleteNode}>Delete</button>
+                            </div>
+                        )}
+
+                        <div style={{ marginTop: 'auto', paddingTop: 40, display: 'flex', gap: 12 }}>
+                            {!isStructureConfirmed && <button className="dev-btn dev-btn-secondary" onClick={() => setStructure(null)}>Modify Settings</button>}
+                            <button className="dev-btn dev-btn-primary" onClick={() => confirmStructure()}>
+                                {isStructureConfirmed ? "Sync with Code Tab" : "Confirm & Proceed to Code"}
+                            </button>
                         </div>
-                        <h2>Generating Development Plan...</h2>
-                        <p>Creating code structure and best practices</p>
                     </div>
                 </div>
-                <div className="agent-content">
-                    <div className="loading-screen">
-                        <div className="loading-spinner-large"></div>
-                        <p>Analyzing design and generating development artifacts...</p>
-                    </div>
+            )}
+        </div>
+    )
+
+    const renderTree = (node, depth = 0) => {
+        const isSelected = selectedNode === node
+        return (
+            <div key={node.name} style={{ marginLeft: depth * 20 }}>
+                <div
+                    className={`tree-item clickable ${isSelected ? 'selected' : ''}`}
+                    onClick={() => setSelectedNode(node)}
+                >
+                    <span>{node.type === 'folder' ? '📁' : '📄'}</span>
+                    <span>{node.name}</span>
                 </div>
+                {node.children && node.children.map(child => renderTree(child, depth + 1))}
             </div>
         )
     }
 
-    return (
-        <div className="agent-workspace">
-            <div className="agent-header">
-                <div className="agent-title-section">
-                    <div className="agent-badge">
-                        <span className="agent-emoji">💻</span>
-                        <span>Development Agent</span>
-                    </div>
-                    <h2>Development Plan & Code Generation</h2>
-                    <p>Ready-to-use code snippets and best practices</p>
-                </div>
-                <button className="close-agent" onClick={onClose}>
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M18 6L6 18M6 6L18 18" />
-                    </svg>
-                </button>
+    const renderCode = () => (
+        <div className="step-content">
+            <div className="step-header">
+                <h3>Code Generation</h3>
+                <p>Generate production-ready code based on your design and requirements.</p>
             </div>
 
-            <div className="agent-content">
-                {/* Navigation Tabs */}
-                <div className="design-tabs">
-                    <button
-                        className={`design-tab ${step === 'techstack' ? 'active' : ''}`}
-                        onClick={() => setStep('techstack')}
-                    >
-                        🛠️ Tech Stack
-                    </button>
-                    <button
-                        className={`design-tab ${step === 'structure' ? 'active' : ''}`}
-                        onClick={() => setStep('structure')}
-                    >
-                        📁 Structure
-                    </button>
-                    <button
-                        className={`design-tab ${step === 'code' ? 'active' : ''}`}
-                        onClick={() => setStep('code')}
-                    >
-                        💾 Code
-                    </button>
-                    <button
-                        className={`design-tab ${step === 'apis' ? 'active' : ''}`}
-                        onClick={() => setStep('apis')}
-                    >
-                        🔌 APIs
-                    </button>
-                    <button
-                        className={`design-tab ${step === 'review' ? 'active' : ''}`}
-                        onClick={() => setStep('review')}
-                    >
-                        ✅ Best Practices
-                    </button>
-                </div>
-
-                {/* Tech Stack View */}
-                {step === 'techstack' && (
-                    <div className="step-container">
-                        <div className="step-header">
-                            <h3>Recommended Technology Stack</h3>
-                            <p>Carefully selected technologies based on your project requirements</p>
-                        </div>
-
-                        {Object.entries(techStack).map(([category, technologies]) => (
-                            <div key={category} className="tech-category">
-                                <h4 className="tech-category-title">
-                                    {category.charAt(0).toUpperCase() + category.slice(1)}
-                                </h4>
-                                <div className="tech-grid">
-                                    {technologies.map((tech, idx) => (
-                                        <div key={idx} className="tech-card">
-                                            <h5>{tech.name}</h5>
-                                            <p className="tech-purpose"><strong>Purpose:</strong> {tech.purpose}</p>
-                                            <p className="tech-why"><strong>Why:</strong> {tech.why}</p>
-                                        </div>
-                                    ))}
+            <div className="code-container" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 24, height: 600 }}>
+                <div className="file-list glass-panel" style={{ overflowY: 'auto', padding: 0 }}>
+                    <div style={{ padding: '16px 0' }}>
+                        <h4 style={{ fontSize: 13, marginBottom: 12, padding: '0 16px', color: 'var(--dev-text-dim)' }}>FILES TO GENERATE</h4>
+                        {codeFiles.map((file, idx) => (
+                            <div
+                                key={idx}
+                                className={`tree-item clickable ${file.status === 'generating' ? 'active' : ''} ${selectedFileIndex === idx ? 'selected' : ''}`}
+                                onClick={() => setSelectedFileIndex(idx)}
+                            >
+                                <div className={`file-status-icon ${file.status}`}>
+                                    {file.status === 'done' ? '✅' : (file.status === 'generating' ? '⏳' : '📄')}
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                                    <span style={{ fontSize: 10, color: 'var(--dev-text-dim)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        {file.path.split('/').length > 2
+                                            ? '.../' + file.path.split('/').slice(-2, -1)
+                                            : file.path.split('/').slice(0, -1).join('/')}
+                                    </span>
+                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>
+                                        {file.path.split('/').pop()}
+                                    </span>
                                 </div>
                             </div>
                         ))}
                     </div>
-                )}
+                </div>
 
-                {/* Folder Structure View */}
-                {step === 'structure' && (
-                    <div className="step-container">
-                        <div className="step-header">
-                            <h3>Project Folder Structure</h3>
-                            <p>Organized directory layout for maintainable code</p>
-                        </div>
-
-                        <div className="folder-structure">
-                            {folderStructure.map((item, idx) => (
-                                <FolderTree key={idx} item={item} level={0} />
-                            ))}
-                        </div>
-
-                        <div className="structure-notes">
-                            <h4>📝 Structure Notes:</h4>
-                            <ul>
-                                <li><strong>Frontend & Backend Separation:</strong> Keeps concerns separated and allows independent deployment</li>
-                                <li><strong>src Folder:</strong> Contains all source code, separate from configuration files</li>
-                                <li><strong>Component Organization:</strong> Group by feature or type based on project size</li>
-                                <li><strong>Tests Folder:</strong> Mirror your src structure in tests for easy navigation</li>
-                                <li><strong>Config Files:</strong> Keep configuration at root level for easy access</li>
-                            </ul>
-                        </div>
-                    </div>
-                )}
-
-                {/* Code Snippets View */}
-                {step === 'code' && (
-                    <div className="step-container">
-                        <div className="step-header">
-                            <h3>Code Snippets & Examples</h3>
-                            <p>Production-ready code following best practices</p>
-                        </div>
-
-                        <div className="code-snippets-list">
-                            {codeSnippets.map((snippet) => (
-                                <div key={snippet.id} className="code-snippet-card">
-                                    <div className="snippet-header">
-                                        <div>
-                                            <span className="snippet-id">{snippet.id}</span>
-                                            <h5>{snippet.title}</h5>
-                                        </div>
-                                        <button
-                                            className="btn-copy-code"
-                                            onClick={() => copyCode(snippet.code)}
-                                        >
-                                            📋 Copy
-                                        </button>
-                                    </div>
-                                    <p className="snippet-description">{snippet.description}</p>
-                                    <div className="code-block">
-                                        <div className="code-language">{snippet.language}</div>
-                                        <pre><code>{snippet.code}</code></pre>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* API Contracts View */}
-                {step === 'apis' && (
-                    <div className="step-container">
-                        <div className="step-header">
-                            <h3>API Contracts & Documentation</h3>
-                            <p>Clear API specifications for frontend-backend communication</p>
-                        </div>
-
-                        <div className="api-contracts-list">
-                            {apiContracts.map((api) => (
-                                <div key={api.id} className="api-contract-card">
-                                    <div className="api-header">
-                                        <span className="api-id">{api.id}</span>
-                                        <div className="api-endpoint">
-                                            <span className="http-method">{api.endpoint.split(' ')[0]}</span>
-                                            <span className="endpoint-path">{api.endpoint.split(' ')[1]}</span>
-                                        </div>
-                                    </div>
-                                    <p className="api-description">{api.description}</p>
-
-                                    {api.authentication && (
-                                        <div className="api-auth">
-                                            <strong>🔐 Authentication:</strong> {api.authentication}
-                                        </div>
-                                    )}
-
-                                    <div className="api-details">
-                                        <div className="api-section">
-                                            <h6>Request</h6>
-                                            <pre><code>{JSON.stringify(api.request, null, 2)}</code></pre>
-                                        </div>
-                                        <div className="api-section">
-                                            <h6>Response</h6>
-                                            <div className="response-tabs">
-                                                <div className="response-success">
-                                                    <strong>✅ Success ({api.response.success.status})</strong>
-                                                    <pre><code>{JSON.stringify(api.response.success.body, null, 2)}</code></pre>
-                                                </div>
-                                                {api.response.error && (
-                                                    <div className="response-error">
-                                                        <strong>❌ Error ({api.response.error.status})</strong>
-                                                        <pre><code>{JSON.stringify(api.response.error.body, null, 2)}</code></pre>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* Best Practices View */}
-                {step === 'review' && (
-                    <div className="step-container">
-                        <div className="step-header">
-                            <h3>Development Best Practices</h3>
-                            <p>Guidelines for writing clean, maintainable, and secure code</p>
-                        </div>
-
-                        <div className="best-practices-grid">
-                            {bestPractices.map((category, idx) => (
-                                <div key={idx} className="practice-category">
-                                    <h4>
-                                        <span className="practice-icon">{category.icon}</span>
-                                        {category.category}
-                                    </h4>
-                                    <ul className="practices-list">
-                                        {category.practices.map((practice, pIdx) => (
-                                            <li key={pIdx}>{practice}</li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* Complete View */}
-                {step === 'complete' && (
-                    <div className="step-container completion-screen">
-                        <div className="completion-icon">✅</div>
-                        <h3>Development Plan Complete!</h3>
-                        <p>Your comprehensive development guide is ready.</p>
-
-                        <div className="completion-summary">
-                            <div className="summary-stat">
-                                <div className="stat-number">{Object.values(techStack).flat().length}</div>
-                                <div className="stat-label">Technologies</div>
+                <div className="code-display">
+                    {!isCodeGenerating && codeFiles.every(f => f.status === 'pending') ? (
+                        <div className="glass-panel" style={{ padding: 32, textAlign: 'center' }}>
+                            <h4>Ready for Generation</h4>
+                            <p style={{ marginBottom: 24 }}>Select code style and start generation.</p>
+                            <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginBottom: 32 }}>
+                                {['Starter Template', 'Production Ready'].map(t => (
+                                    <button
+                                        key={t}
+                                        className={`dev-btn ${selectedCodeType === t ? 'dev-btn-primary' : 'dev-btn-secondary'}`}
+                                        onClick={() => setSelectedCodeType(t)}
+                                    >
+                                        {t}
+                                    </button>
+                                ))}
                             </div>
-                            <div className="summary-stat">
-                                <div className="stat-number">{codeSnippets.length}</div>
-                                <div className="stat-label">Code Snippets</div>
+                            <button className="dev-btn dev-btn-primary" style={{ margin: '0 auto' }} onClick={startCodeGeneration}>Start Generation</button>
+                        </div>
+                    ) : (
+                        <div className="code-viewer">
+                            <div className="code-header">
+                                <span className="code-path">
+                                    {codeFiles[selectedFileIndex]?.path || 'Select a file...'}
+                                </span>
+                                {isCodeGenerating && codeFiles[selectedFileIndex]?.status === 'generating' && (
+                                    <span className="status-tag pulse">Writing...</span>
+                                )}
+                                {countdown > 0 && isCodeGenerating && <span className="countdown">Cooldown: {countdown}s</span>}
                             </div>
-                            <div className="summary-stat">
-                                <div className="stat-number">{apiContracts.length}</div>
-                                <div className="stat-label">API Endpoints</div>
+                            <div className="code-content" style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: 13, lineHeight: '1.6', overflow: 'auto' }}>
+                                {codeFiles[selectedFileIndex]?.code || (codeFiles[selectedFileIndex]?.status === 'generating' ? '// AI is thinking...' : '// No code generated yet')}
                             </div>
                         </div>
+                    )}
 
-                        <div className="next-steps">
-                            <h4>🎯 What's Next?</h4>
-                            <p>Your development plan is ready! You can now proceed to the <strong>Testing Phase</strong> where the Testing Agent will help you create comprehensive test cases and quality assurance strategies.</p>
+                    {codeFiles.every(f => f.status === 'done') && (
+                        <div style={{ marginTop: 20, display: 'flex', gap: 16 }}>
+                            <button className="dev-btn dev-btn-secondary" onClick={() => {
+                                const reset = codeFiles.map(f => ({ ...f, status: 'pending', code: '' }))
+                                setCodeFiles(reset)
+                            }}>Regenerate Entire Code</button>
+                            <button className="dev-btn dev-btn-secondary" onClick={() => finalizeDevelopment(false)}>Sync Progress</button>
+                            <button className="dev-btn dev-btn-primary" onClick={() => finalizeDevelopment(true)}>Finalize Development Phase</button>
                         </div>
-
-                        <div className="step-actions">
-                            <button className="btn-secondary" onClick={exportDevelopmentPlan}>
-                                📥 Export Development Plan
-                            </button>
-                            <button className="btn-primary-action" onClick={onClose}>
-                                Close & Return to Dashboard
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* Action Buttons */}
-                {step !== 'complete' && step !== 'loading' && (
-                    <div className="step-actions">
-                        <button className="btn-secondary" onClick={exportDevelopmentPlan}>
-                            📥 Export Plan
-                        </button>
-                        <button className="btn-primary-action" onClick={handleComplete}>
-                            Complete & Save
-                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                                <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                            </svg>
-                        </button>
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
         </div>
     )
-}
 
-// Folder Tree Component
-function FolderTree({ item, level }) {
-    const [isOpen, setIsOpen] = useState(level < 2)
+
 
     return (
-        <div className="folder-item" style={{ marginLeft: `${level * 20}px` }}>
-            <div className="folder-header" onClick={() => item.children && setIsOpen(!isOpen)}>
-                {item.children && (
-                    <span className="folder-toggle">{isOpen ? '📂' : '📁'}</span>
-                )}
-                {!item.children && <span className="file-icon">📄</span>}
-                <span className="item-name">{item.name}</span>
-                <span className="item-description">{item.description}</span>
+        <div className="dev-agent-container">
+            <div className="dev-header">
+                <div className="dev-title-section">
+                    <div className="dev-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(0,242,255,0.1)', padding: '4px 12px', borderRadius: 20, marginBottom: 8 }}>
+                        <span style={{ fontSize: 14 }}>💻</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: '#00f2ff', textTransform: 'uppercase' }}>Development Agent</span>
+                    </div>
+                    <h2>Phase 3: Development</h2>
+                    <p>Building the foundation for {currentProject?.name}</p>
+                </div>
+                <button className="close-btn" onClick={onClose} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6L18 18" /></svg>
+                </button>
             </div>
-            {isOpen && item.children && (
-                <div className="folder-children">
-                    {item.children.map((child, idx) => (
-                        <FolderTree key={idx} item={child} level={level + 1} />
-                    ))}
+
+            <div className="dev-tabs">
+                <div
+                    className={`dev-tab ${step === 'validation' ? 'active' : ''}`}
+                    onClick={() => {
+                        setIsTabSwitching(true)
+                        setStep('validation')
+                        setTimeout(() => setIsTabSwitching(false), 300)
+                    }}
+                >🛡️ Validation</div>
+                <div
+                    className={`dev-tab ${step === 'techstack' ? 'active' : ''}`}
+                    onClick={() => {
+                        setIsTabSwitching(true)
+                        setStep('techstack')
+                        setTimeout(() => setIsTabSwitching(false), 300)
+                    }}
+                >🛠️ Tech Stack</div>
+                <div
+                    className={`dev-tab ${step === 'structure' ? 'active' : ''}`}
+                    onClick={() => {
+                        if (isStackConfirmed) {
+                            setIsTabSwitching(true)
+                            setStep('structure')
+                            setTimeout(() => setIsTabSwitching(false), 300)
+                        }
+                    }}
+                >📁 Structure</div>
+                <div
+                    className={`dev-tab ${step === 'code' ? 'active' : ''} ${!isStructureConfirmed ? 'disabled' : ''}`}
+                    style={{ opacity: !isStructureConfirmed ? 0.5 : 1, cursor: !isStructureConfirmed ? 'not-allowed' : 'pointer' }}
+                    onClick={async () => {
+                        if (isStructureConfirmed) {
+                            setIsTabSwitching(true)
+                            await confirmStructure(true)
+                            setStep('code')
+                            setTimeout(() => setIsTabSwitching(false), 300)
+                        } else {
+                            alert("Please confirm your project structure first")
+                        }
+                    }}
+                >💾 Code</div>
+            </div>
+
+            <div className="dev-content" style={{ position: 'relative' }}>
+                {(loading || isTabSwitching) ? (
+                    <div className="loading-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 400 }}>
+                        <div className="spinner"></div>
+                        <p style={{ marginTop: 24, fontSize: 18, color: 'var(--dev-primary)', fontWeight: 600 }}>
+                            {loading ? loadingMessage : `Loading ${step} phase...`}
+                        </p>
+                    </div>
+                ) : (
+                    <>
+                        {step === 'validation' && renderValidation()}
+                        {step === 'techstack' && renderTechStack()}
+                        {step === 'structure' && renderStructure()}
+                        {step === 'code' && renderCode()}
+                    </>
+                )}
+
+                {step === 'complete' && (
+                    <div className="centered-state" style={{ textAlign: 'center', padding: 64 }}>
+                        <div className="success-icon" style={{ fontSize: 64, marginBottom: 24 }}>✨</div>
+                        <h3>Development Phase Completed!</h3>
+                        <p>Codebase and architecture artifacts generated successfully.</p>
+                        <p>Proceeding to Testing Phase...</p>
+                    </div>
+                )}
+            </div>
+
+            {/* Delay Indicator Overlay */}
+            {countdown > 0 && (
+                <div style={{ position: 'fixed', bottom: 24, right: 24, background: 'rgba(5, 10, 21, 0.9)', border: '1px solid var(--dev-primary)', borderRadius: 12, padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12, zIndex: 1000, boxShadow: '0 0 20px rgba(0, 242, 255, 0.2)' }}>
+                    <div className="spinner" style={{ width: 20, height: 20, borderWidth: 2 }}></div>
+                    <span style={{ fontSize: 14, fontWeight: 600 }}>Rate limiter active: {countdown}s</span>
                 </div>
             )}
         </div>

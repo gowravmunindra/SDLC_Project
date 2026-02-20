@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api'
 
 // Create axios instance
 const api = axios.create({
@@ -32,7 +32,7 @@ api.interceptors.response.use(
             // Unauthorized - clear token and redirect to login
             localStorage.removeItem('token')
             localStorage.removeItem('user')
-            window.location.href = '/login'
+            window.location.href = '/'
         }
         return Promise.reject(error)
     }
@@ -62,10 +62,27 @@ const apiService = {
     // Development Phase
     saveDevelopment: (projectId, data) => api.post(`/projects/${projectId}/development`, data),
     getDevelopment: (projectId) => api.get(`/projects/${projectId}`).then(res => res.data.development),
+    verifyDevelopmentKey: () => api.get('/development/verify-key'),
+    generateTechStack: (projectId) => {
+        if (!projectId) return Promise.reject(new Error("Project ID is required"));
+        return api.post('/development/generate-tech-stack', { projectId });
+    },
+    generateStructure: (projectId, techStack, generateType) => {
+        if (!projectId) return Promise.reject(new Error("Project ID is required"));
+        return api.post('/development/generate-structure', { projectId, techStack, generateType });
+    },
+    generateCode: (projectId, filePath, fileDescription, techStack, codeType, diagrams, fullStructure) => {
+        if (!projectId) return Promise.reject(new Error("Project ID is required"));
+        return api.post('/development/generate-code', { projectId, filePath, fileDescription, techStack, codeType, diagrams, fullStructure });
+    },
 
     // Testing Phase
     saveTesting: (projectId, data) => api.post(`/projects/${projectId}/testing`, data),
-    getTesting: (projectId) => api.get(`/projects/${projectId}`).then(res => res.data.testing)
+    getTesting: (projectId) => api.get(`/projects/${projectId}`).then(res => res.data.testing),
+
+    // Vibe Coding (Creative Generation)
+    vibeGenerate: (payload) => api.post('/vibe-coding/generate-project', payload),
+    vibeUpdate: (payload) => api.post('/vibe-coding/update-project', payload)
 }
 
 export default apiService

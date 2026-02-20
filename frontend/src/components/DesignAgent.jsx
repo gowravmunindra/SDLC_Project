@@ -1,11 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
+import { useProject } from '../contexts/ProjectContext'
+import apiService from '../services/apiService'
 import geminiService from '../services/geminiService'
-import huggingFaceService from '../services/huggingFaceService'
-import { designPrompt } from '../utils/promptTemplates'
 import { getPlantUMLUrl, cleanPlantUML } from '../utils/plantuml'
 import './DesignAgent.css'
 
+const DIAGRAM_STYLE = `skinparam backgroundColor transparent\nskinparam shadowing false`;
+
 function DesignAgent({ onClose, onComplete }) {
+    const { currentProject, updateProject, refreshCurrentProject } = useProject()
     const [step, setStep] = useState('loading') // loading, architecture, diagrams, complete
     const [requirements, setRequirements] = useState(null)
     const [architecture, setArchitecture] = useState(null)
@@ -29,235 +32,341 @@ function DesignAgent({ onClose, onComplete }) {
     const [customPrompt, setCustomPrompt] = useState('')
     const [isModifying, setIsModifying] = useState(false)
 
-    // Load Data
+    // Load Data - Robust Initialization
     useEffect(() => {
-        const savedRequirements = localStorage.getItem('sdlc_requirements')
-        if (savedRequirements) {
-            const reqData = JSON.parse(savedRequirements)
-            setRequirements(reqData)
-            analyzeAndGenerateDesign(reqData)
+        if (!currentProject) return
+
+        if (currentProject.requirements) {
+            setRequirements(currentProject.requirements)
+        }
+
+        if (currentProject.design && currentProject.design.architecture) {
+            setArchitecture(currentProject.design.architecture)
+
+            if (currentProject.design.diagrams) {
+                setDiagrams(prev => {
+                    const newDiagrams = { ...prev }
+                    Object.keys(currentProject.design.diagrams).forEach(key => {
+                        if (newDiagrams[key]) {
+                            newDiagrams[key] = {
+                                ...newDiagrams[key],
+                                ...currentProject.design.diagrams[key],
+                                // Ensure URL is present if code exists
+                                url: currentProject.design.diagrams[key].url || (currentProject.design.diagrams[key].code ? getPlantUMLUrl(currentProject.design.diagrams[key].code) : '')
+                            }
+                        }
+                    })
+                    return newDiagrams
+                })
+            }
+            setStep('architecture')
+            return
+        }
+
+        if (currentProject.requirements) {
+            setStep('architecture')
+            if (!architecture) {
+                setTimeout(() => {
+                    generateArchitectureInBackground(currentProject.requirements)
+                }, 500)
+            }
         } else {
-            // Fallback for demo
-            const sampleReq = {
-                projectDescription: 'A smart home automation system that allows users to control devices remotely.',
-                functionalRequirements: [
-                    { title: 'Device Control', description: 'Turn lights on/off' },
-                    { title: 'User Auth', description: 'Secure login' }
-                ]
-            }
-            setRequirements(sampleReq)
-            analyzeAndGenerateDesign(sampleReq)
+            setStep('architecture')
         }
-    }, [])
+    }, [currentProject])
 
-    // Auto-generate diagrams when architecture is ready
+    // SYNC: Update URLs whenever code changes (handles manual edits too)
     useEffect(() => {
-        if (step === 'architecture' && requirements) {
-            generateAllDiagrams()
+        const activeCode = diagrams[activeDiagram]?.code;
+        if (activeCode) {
+            const newUrl = getPlantUMLUrl(activeCode);
+            if (newUrl !== diagrams[activeDiagram].url) {
+                setDiagrams(prev => ({
+                    ...prev,
+                    [activeDiagram]: { ...prev[activeDiagram], url: newUrl }
+                }));
+            }
         }
-    }, [step, requirements])
+    }, [diagrams[activeDiagram]?.code, activeDiagram]);
 
-    const generateAllDiagrams = async () => {
-        const types = Object.keys(diagrams).filter(t => diagrams[t].status === 'pending')
+    // Safety timeout
+    useEffect(() => {
+        const timeout = setTimeout(() => {
+            if (step === 'loading' && currentProject) {
+                setStep('architecture')
+            }
+        }, 3000)
+        return () => clearTimeout(timeout)
+    }, [step, currentProject])
 
-        for (const type of types) {
-            await generateDiagram(type)
-            // Add delay to avoid rate limits
-            await new Promise(resolve => setTimeout(resolve, 2000))
-        }
-    }
-
-    // Scroll Handler for Hero
-    const handleScroll = (e) => {
-        const scrollTop = e.target.scrollTop
-        setShowHero(scrollTop < 50)
-    }
-
-    const analyzeAndGenerateDesign = async (reqData) => {
+    const generateArchitectureInBackground = async (reqData) => {
         try {
-            // Generate Architecture Text (keeping existing consistency)
-            const prompt = designPrompt(reqData)
-            let archData = null
+            // First show fallback so user isn't staring at a blank screen
+            const fallback = generateArchitectureFallback(reqData)
+            setArchitecture(fallback.architecture)
 
-            try {
-                // Try HuggingFace first as per previous flow
-                archData = await huggingFaceService.generateJSON(prompt)
-            } catch (e) {
-                console.warn('HF failed, using fallback arch', e)
-                archData = generateArchitectureFallback(reqData)
+            // Then try to generate a real one with AI
+            const prompt = `Act as a Senior Solution Architect. Design a detailed system architecture for this project:
+Project: ${currentProject.name}
+Description: ${reqData.projectDescription}
+Requirements: ${reqData.functionalRequirements.slice(0, 5).map(r => r.title).join(', ')}
+
+Return ONLY a JSON object with this structure:
+{
+  "architecture": {
+    "type": "e.g., Microservices / Event-Driven / Serverless",
+    "justification": "why this choice fits the requirements",
+    "layers": [
+      { "name": "Layer Name", "tech": ["Tech 1", "Tech 2"], "description": "Specific responsibility" }
+    ]
+  }
+}
+Keep it professional and specific to the project.`;
+
+            const response = await geminiService.generateJSON(prompt, 2, true);
+            if (response && response.architecture) {
+                setArchitecture(response.architecture);
             }
-
-            if (archData && archData.architecture) {
-                setArchitecture(archData.architecture)
-            } else {
-                setArchitecture(generateArchitectureFallback(reqData).architecture)
-            }
-
-            setStep('architecture')
         } catch (error) {
-            console.error('Error generating design:', error)
-            setArchitecture(generateArchitectureFallback(reqData).architecture)
-            setStep('architecture')
+            console.error('[DesignAgent] Architecture AI generation failed:', error)
+            // Fallback is already set
         }
     }
 
-    const generateArchitectureFallback = (reqData) => {
+    const generateArchitectureFallback = (reqs) => {
+        const techStack = reqs?.technicalRequirements?.stack || ['MERN Stack', 'Node.js', 'React']
         return {
             architecture: {
-                type: 'Monolithic',
-                justification: 'Simplified architecture for immediate development.',
+                type: 'N-Tier Web Architecture',
+                justification: 'To ensure clear separation of concerns and scalable performance for a web-based management system.',
                 layers: [
-                    { name: 'Frontend', description: 'React-based UI', technologies: ['React', 'Vite'] },
-                    { name: 'Backend', description: 'Node.js/Express API', technologies: ['Node', 'Express'] },
-                    { name: 'Database', description: 'Relational Store', technologies: ['PostgreSQL'] }
+                    { name: 'Frontend', tech: ['React', 'CSS3', 'Vite'], description: 'Responsive SPA providing the user interface and state management.' },
+                    { name: 'API Services', tech: ['Node.js', 'Express', 'JWT'], description: 'Secure RESTful endpoints handling business logic and auth.' },
+                    { name: 'Persistence', tech: ['MongoDB', 'Mongoose'], description: 'Document-based storage for flexible requirement data.' }
                 ]
             }
         }
     }
 
-    // Core PlantUML Generation
-    const generateDiagram = async (type, manualPrompt = null) => {
+    const constructDiagramPrompt = (type, projectName, reqs, arch) => {
+        const functionalReqs = reqs?.functionalRequirements?.slice(0, 4).map(r => r.title).join(', ') || 'Core features';
+
+        const typeSpecs = {
+            useCase: {
+                blueprint: "actor \"User\" as U\nusecase \"Login System\" as UC1\nU -> UC1",
+                rules: "Use ONLY 'actor' and 'usecase' (oval). Connect with simple arrows. NO classes, NO boxes."
+            },
+            class: {
+                blueprint: "class \"UserEntity\" as UE {\n  +id: string\n  +login()\n}\nclass \"Database\" as DB\nUE -> DB : persists",
+                rules: "Use 'class' blocks with { fields }. Use relationships like '->', '--*', or '<|--'. NO actors, NO clouds."
+            },
+            sequence: {
+                blueprint: "actor \"Client\" as C\nparticipant \"Server\" as S\nC -> S : GET /data\nS -> C : 200 OK",
+                rules: "Use 'actor' and 'participant'. Use horizontal arrows only. NO boxes, NO inheritance."
+            },
+            activity: {
+                blueprint: "start\n:Initialize;\nif (Valid?) then (yes)\n  :Process;\nelse (no)\n  :Error;\nendif\nstop",
+                rules: "Use 'start', 'stop', 'if/then/else', and ':Action;'. NO actors, NO classes."
+            },
+            state: {
+                blueprint: "[*] -> Idle\nIdle -> Processing : start\nProcessing -> Idle : finish\nProcessing -> [*]",
+                rules: "Use '[*]' for entry/exit. Use 'State -> State : Event'. NO participants."
+            },
+            component: {
+                blueprint: "[API Gate] as API\n[Auth Service] as Auth\nAPI ..> Auth : uses",
+                rules: "Use '[Component Name]' notation. Use dashed arrows '..>' for dependencies. NO actors."
+            },
+            deployment: {
+                blueprint: "node \"AWS Cloud\" as Cloud {\n  node \"Web Server\" as Web\n  database \"PostgreSQL\" as DB\n}\nWeb -> DB",
+                rules: "Use 'node', 'database', or 'cloud'. Show physical nesting with { }. NO 'usecase' or 'actor'."
+            }
+        };
+
+        const spec = typeSpecs[type];
+
+        return `Act as a Senior Software Architect. Generate a syntactically PERFECT PlantUML ${type} diagram for "${projectName}".
+Features to include: ${functionalReqs}
+
+STRICT ARCHITECTURAL RULES for ${type.toUpperCase()}:
+1. TYPE-STRICT SYNTAX: ${spec.rules}
+2. ALIASES: Define everything with an alias: [Type] "Display Name" as ALIAS.
+3. CONNECTIVITY: Connect everything via ALIASES only (ALIAS1 -> ALIAS2).
+4. QUOTES: Always wrap display names in "double quotes".
+
+EXAMPLE BLUEPRINT:
+${spec.blueprint}
+
+Essential Output Rules:
+- Start with @startuml and end with @enduml.
+- Output ONLY valid PlantUML code. No chat, no intro.
+- Keep output concise (max 5-6 total elements).
+- Ensure professional, technical naming.`;
+    }
+
+    const generateDiagram = async (type) => {
+        console.log(`[DesignAgent] Targeted Generation: ${type}`)
         setDiagrams(prev => ({
             ...prev,
-            [type]: { ...prev[type], status: 'loading', error: null }
+            [type]: { ...prev[type], status: 'loading', error: null, code: '', url: '' }
         }))
 
         try {
-            const prompt = constructPrompt(type, requirements, manualPrompt)
-            console.log(`[DesignAgent] Generating ${type} diagram...`)
-            const code = await geminiService.generateContent(prompt)
+            const prompt = constructDiagramPrompt(type, currentProject.name, requirements, architecture)
+            const codeRaw = await geminiService.generateContent(prompt, true)
+            console.log(`[DesignAgent] Raw AI Response for ${type}:`, codeRaw)
 
-            if (!code) throw new Error("Received empty response from AI")
+            // 1. Clean and Sanitize
+            let code = cleanPlantUML(codeRaw)
 
-            const cleanCode = cleanPlantUML(code)
-            if (!cleanCode) throw new Error("Failed to parse valid PlantUML code")
+            // 2. Check for AI refusals
+            const hasTags = code.toLowerCase().includes('@startuml') && code.toLowerCase().includes('@enduml')
+            const isRefusal = codeRaw.toLowerCase().includes('sorry') ||
+                (codeRaw.toLowerCase().includes('assist') && !hasTags) ||
+                (codeRaw.toLowerCase().includes('cannot') && !hasTags && codeRaw.length < 100);
 
-            const url = getPlantUMLUrl(cleanCode)
+            if (!hasTags && isRefusal) {
+                console.warn(`[DesignAgent] AI Refusal Detected for ${type}. Using fallback template.`)
+
+                // Fallback Logic: Provide a basic template so the user isn't stuck
+                const fallbackTemplates = {
+                    useCase: `@startuml\nactor User\nUser -> (Use Case 1)\n@enduml`,
+                    class: `@startuml\nclass CoreEntity {\n  +id: string\n}\n@enduml`,
+                    sequence: `@startuml\nactor User\nparticipant System\nUser -> System: Action\nSystem -> User: Result\n@enduml`,
+                    activity: `@startuml\nstart\n:Initialize;\n:Process Task;\nstop\n@enduml`,
+                    state: `@startuml\n[*] --> Idle\nIdle --> Processing : Start\nProcessing --> [*]\n@enduml`,
+                    component: `@startuml\n[Component A] -> [Component B]\n@enduml`,
+                    deployment: `@startuml\nnode Server {\n  [Application]\n}\n@enduml`
+                };
+                code = fallbackTemplates[type] || fallbackTemplates.useCase;
+            }
+
+            // 3. Fallback: if no tags but it looks like code, try to wrap it
+            if (!hasTags && codeRaw.length > 20 && !isRefusal) {
+                code = '@startuml\n' + codeRaw.replace(/```[a-z]*\s*/g, '').replace(/```\s*/g, '') + '\n@enduml'
+                code = cleanPlantUML(code) // Re-clean to be safe
+            }
+
+            // 4. Force tags if still missing
+            if (!code.toLowerCase().includes('@startuml')) code = '@startuml\n' + code
+            if (!code.toLowerCase().includes('@enduml')) code = code + '\n@enduml'
+
+            // 5. Inject styles and fix syntax
+            if (!code.toLowerCase().includes('skinparam')) {
+                code = code.replace(/@startuml/i, `@startuml\n${DIAGRAM_STYLE}\n`);
+            }
+
+            code = code
+                .replace(/\/\//g, "'") // Fix invalid C-style comments
+                .replace(/-\s+>/g, '->')
+                .replace(/--\s+>/g, '-->');
+
+            code = code.trim();
+
+            // TYPE-SPECIFIC FIXES
+            if (type === 'activity') {
+                // Ensure activity diagrams have start/stop if missing
+                if (!code.includes('start')) code = code.replace('@startuml', '@startuml\nstart');
+                if (!code.includes('stop') && !code.includes('end')) code = code.replace('@enduml', 'stop\n@enduml');
+                // Common mistake: using sequence arrows in activity diagrams
+                // But only if it's clearly an activity diagram (has : or ;)
+                if (code.includes(':') || code.includes(';')) {
+                    code = code.replace(/(\w+)\s*->\s*(\w+)/g, ':$1;\n:$2;');
+                }
+            }
+
+            code = code.trim();
 
             setDiagrams(prev => ({
                 ...prev,
                 [type]: {
                     ...prev[type],
-                    code: cleanCode,
-                    url: url,
-                    status: 'done',
-                    error: null
+                    code,
+                    url: getPlantUMLUrl(code),
+                    status: 'done'
                 }
             }))
-
         } catch (error) {
-            console.error(`[DesignAgent] Error generating ${type}:`, error)
+            console.error(`[DesignAgent] Generation Error [${type}]:`, error)
             setDiagrams(prev => ({
                 ...prev,
-                [type]: {
-                    ...prev[type],
-                    status: 'error',
-                    error: error.message || "Unknown error occurred"
-                }
+                [type]: { ...prev[type], status: 'error', error: error.message }
             }))
         }
-    }
-
-    const constructPrompt = (type, reqs, manualInstructions) => {
-        const diagramTypes = {
-            useCase: "Use Case Diagram. Define actors (User, Admin, etc) and use cases. Use proper 'actor' and 'usecase' syntax. Connect with -->.",
-            class: "Class Diagram. Define classes with attributes and methods. Use proper relationships (--|, *--, etc).",
-            sequence: "Sequence Diagram. Show the flow of a main feature (e.g. Login or Core Action). Use -> for messages.",
-            activity: "Activity Diagram. Show a workflow logic (start to end). Use :action; and if/else.",
-            state: "State Chart Diagram. Show states of a core entity (e.g. Order, User). Use [*] -> State.",
-            component: "Component Diagram. Show system components/modules and their interfaces/dependencies.",
-            deployment: "Deployment Diagram. Show nodes (Server, Database, Client) and artifacts."
-        }
-
-        return `
-        You are an expert UML architect.
-        TASK: Generate a VALID PlantUML ${diagramTypes[type]}
-        
-        System Description: ${reqs?.projectDescription}
-        Key Requirements: ${reqs?.functionalRequirements?.map(r => r.title)?.join(', ') || ''}
-        
-        ${manualInstructions ? `USER REQUEST: ${manualInstructions}` : ''}
-        
-        STRICT RULES:
-        - Output ONLY the PlantUML code.
-        - Start with @startuml
-        - End with @enduml
-        - NO markdown formatting (no \`\`\`).
-        - Use standard PlantUML syntax only.
-        - Keep it concise but professional.
-        `
     }
 
     const handleModify = async () => {
-        if (!customPrompt.trim()) return
+        if (!customPrompt) return
         setIsModifying(true)
-
-        const current = diagrams[activeDiagram]
-
         try {
-            const prompt = `
-            You are a PlantUML Editor.
-            Update this diagram based on request: "${customPrompt}"
+            const current = diagrams[activeDiagram]
+            const prompt = `You are a PlantUML expert. Modify the following code according to the user request.
             
-            Current PlantUML:
+            CURRENT CODE:
             ${current.code}
             
-            Return ONLY the updated PlantUML code.
-            Start with @startuml, end with @enduml.
-            `
+            USER INSTRUCTION: ${customPrompt}
+            
+            STRICT RULES:
+            1. Output ONLY valid PlantUML code.
+            2. Start with @startuml and end with @enduml.
+            3. Apply the changes requested by the user.
+            4. Do not include any explanation or markdown tags.`
 
-            const newCodeRaw = await geminiService.generateContent(prompt)
-            const newCode = cleanPlantUML(newCodeRaw)
-            const url = getPlantUMLUrl(newCode)
+            const result = await geminiService.generateContent(prompt)
 
-            setDiagrams(prev => ({
-                ...prev,
-                [activeDiagram]: {
-                    ...prev[activeDiagram],
-                    code: newCode,
-                    url: url
-                }
-            }))
-            setCustomPrompt('')
-        } catch (e) {
-            console.error("Modification failed", e)
+            // Apply refined cleaning logic
+            let code = cleanPlantUML(result)
+
+            // Basic syntax fixes
+            code = code
+                .replace(/@startuml+/gi, '@startuml')
+                .replace(/@enduml+/gi, '@enduml')
+                .replace(/-\s+>/g, '->')
+                .replace(/--\s+>/g, '-->')
+                .replace(/\n\s*(class|node|actor|participant|component|state|usecase|package|artifact|container)\s*@enduml$/i, '\n@enduml')
+                .trim();
+
+            if (code) {
+                setDiagrams(prev => ({
+                    ...prev,
+                    [activeDiagram]: {
+                        ...prev[activeDiagram],
+                        code,
+                        url: getPlantUMLUrl(code),
+                        status: 'done'
+                    }
+                }))
+                setCustomPrompt('')
+            }
+        } catch (error) {
+            console.error('Modify failed:', error)
         } finally {
             setIsModifying(false)
         }
     }
 
-    const handleCodeEdit = (e) => {
-        const newCode = e.target.value
-        setDiagrams(prev => ({
-            ...prev,
-            [activeDiagram]: { ...prev[activeDiagram], code: newCode }
-        }))
-    }
-
-    // Debounced render or manual "Update" button needed for text edits
-    // We'll use a manual button to avoid flicker
-    const handleManualRender = () => {
-        const current = diagrams[activeDiagram]
-        const url = getPlantUMLUrl(current.code)
-        setDiagrams(prev => ({
-            ...prev,
-            [activeDiagram]: { ...current, url: url }
-        }))
-    }
-
-    const handleComplete = () => {
+    const handleComplete = async () => {
         const designData = {
-            requirements,
             architecture,
             diagrams,
-            generatedAt: new Date().toISOString()
+            completedAt: new Date().toISOString()
         }
-        localStorage.setItem('sdlc_design', JSON.stringify(designData))
-        if (onComplete) onComplete(designData)
-        setStep('complete')
+
+        try {
+            await apiService.saveDesign(currentProject._id, designData)
+            await updateProject(currentProject._id, { status: 'development' })
+            await refreshCurrentProject()
+            onComplete(designData)
+        } catch (error) {
+            console.error('Save failed:', error)
+            alert('Failed to save design')
+        }
     }
 
-    // Render Helpers
+    const handleScroll = (e) => {
+        setShowHero(e.target.scrollTop < 50)
+    }
+
     const renderHero = () => (
         <div className={`agent-hero ${showHero ? 'visible' : 'hidden'}`}>
             <div className="agent-title-section">
@@ -266,7 +375,7 @@ function DesignAgent({ onClose, onComplete }) {
                     <span>System Design Agent</span>
                 </div>
                 <h2>System Architecture & Design</h2>
-                <p>Comprehensive design based on requirements</p>
+                <p>Blueprint for {currentProject?.name}</p>
             </div>
             <button className="close-agent" onClick={onClose}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -276,23 +385,13 @@ function DesignAgent({ onClose, onComplete }) {
         </div>
     )
 
-    if (step === 'loading') {
-        return (
-            <div className="agent-workspace">
-                <div className="agent-content center-content">
-                    <div className="loading-spinner-large"></div>
-                    <p style={{ marginTop: 20 }}>Analyzing requirements...</p>
-                </div>
-            </div>
-        )
-    }
-
     return (
         <div className="agent-workspace">
             {renderHero()}
 
             <div
                 className={`agent-content ${!showHero ? 'expanded' : ''}`}
+                style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', minHeight: '500px' }}
                 ref={contentRef}
                 onScroll={handleScroll}
             >
@@ -313,42 +412,51 @@ function DesignAgent({ onClose, onComplete }) {
                 </div>
 
                 {/* ARCHITECTURE VIEW */}
-                {step === 'architecture' && architecture && (
-                    <div className="step-container fade-in">
-                        <div className="architecture-card glass-panel">
-                            <div className="arch-header">
-                                <h3>{architecture.type} Architecture</h3>
-                                <div className="badge-primary">{architecture.type}</div>
-                            </div>
-                            <p className="arch-justification">{architecture.justification}</p>
-                        </div>
-
-                        <div className="layers-grid">
-                            {architecture.layers?.map((layer, idx) => (
-                                <div key={idx} className="layer-card glass-panel interactive">
-                                    <div className="layer-number">{idx + 1}</div>
-                                    <h4>{layer.name}</h4>
-                                    <p>{layer.description}</p>
-                                    <div className="tech-tags">
-                                        {layer.technologies?.map(t => (
-                                            <span key={t} className="tag">{t}</span>
-                                        ))}
+                {step === 'architecture' && (
+                    <div className="step-container">
+                        {architecture ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                                <div className="architecture-card glass-panel">
+                                    <div className="arch-header">
+                                        <h3>{architecture.type} Architecture</h3>
+                                        <div className="badge-primary">{architecture.type}</div>
                                     </div>
+                                    <p className="arch-justification">{architecture.justification}</p>
                                 </div>
-                            ))}
-                        </div>
 
-                        <div className="step-actions">
-                            <button className="btn-primary" onClick={() => setStep('diagrams')}>
-                                Proceed to Diagrams →
-                            </button>
-                        </div>
+                                <div className="layers-grid">
+                                    {(architecture.layers || []).map((layer, idx) => (
+                                        <div key={idx} className="layer-card glass-panel">
+                                            <div className="layer-number">{idx + 1}</div>
+                                            <h4>{layer.name}</h4>
+                                            <p>{layer.description}</p>
+                                            <div className="tech-tags">
+                                                {(layer.tech || []).map(t => (
+                                                    <span key={t} className="tag">{t}</span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="step-actions">
+                                    <button className="btn-primary" onClick={() => setStep('diagrams')}>
+                                        Proceed to Diagrams →
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="centered-state">
+                                <div className="loading-spinner-large"></div>
+                                <p style={{ marginTop: 20 }}>Generating system architecture...</p>
+                            </div>
+                        )}
                     </div>
                 )}
 
                 {/* DIAGRAMS VIEW */}
                 {step === 'diagrams' && (
-                    <div className="step-container fade-in">
+                    <div className="step-container">
                         <div className="diagrams-nav">
                             {Object.entries(diagrams).map(([key, data]) => (
                                 <button
@@ -359,87 +467,67 @@ function DesignAgent({ onClose, onComplete }) {
                                     {data.label}
                                     {data.status === 'done' && <span className="status-dot success"></span>}
                                     {data.status === 'loading' && <span className="status-dot loading"></span>}
-                                    {data.status === 'error' && <span className="status-dot error"></span>}
                                 </button>
                             ))}
                         </div>
 
                         <div className="diagram-workspace glass-panel">
-                            {/* Editor Column */}
-                            <div className="diagram-column editor-column">
-                                <div className="column-header">
-                                    <h4>PlantUML Code</h4>
-                                    <button className="btn-xs" onClick={handleManualRender}>
-                                        ⟳ Render
-                                    </button>
-                                </div>
+                            {/* Editor Column (LEFT) */}
+                            <div className="diagram-column editor-column" style={{ padding: '20px', borderRight: '1px solid var(--border-color)', flex: '1' }}>
+                                <h4>Modify Diagram</h4>
                                 <textarea
                                     className="code-editor-area"
                                     value={diagrams[activeDiagram].code}
-                                    onChange={handleCodeEdit}
-                                    spellCheck="false"
+                                    onChange={(e) => {
+                                        const code = e.target.value
+                                        setDiagrams(prev => ({
+                                            ...prev,
+                                            [activeDiagram]: { ...prev[activeDiagram], code }
+                                        }))
+                                    }}
+                                    style={{ height: '350px', marginBottom: '10px', width: '100%', background: '#000', color: '#0f0', fontFamily: 'monospace', padding: '10px' }}
                                 />
                                 <div className="prompt-box">
                                     <input
                                         type="text"
-                                        placeholder={`Modify ${diagrams[activeDiagram].label}... (e.g. "Add User node")`}
+                                        placeholder="Instructions..."
                                         value={customPrompt}
                                         onChange={e => setCustomPrompt(e.target.value)}
                                         onKeyDown={e => e.key === 'Enter' && handleModify()}
                                     />
-                                    <button
-                                        className="btn-send"
-                                        onClick={handleModify}
-                                        disabled={isModifying}
-                                    >
-                                        {isModifying ? '...' : '➤'}
-                                    </button>
+                                    <button className="btn-send" onClick={handleModify} disabled={isModifying}>➤</button>
                                 </div>
                             </div>
 
-                            {/* Preview Column */}
-                            <div className="diagram-column preview-column">
+                            {/* Preview Column (RIGHT) */}
+                            <div className="diagram-column preview-column" style={{ padding: '20px', flex: '1.5' }}>
                                 {diagrams[activeDiagram].status === 'loading' ? (
                                     <div className="centered-state">
                                         <div className="loading-spinner"></div>
-                                        <p>Generating Diagram...</p>
-                                    </div>
-                                ) : diagrams[activeDiagram].status === 'error' ? (
-                                    <div className="centered-state error">
-                                        <p style={{ fontWeight: 'bold' }}>⚠ Failed to generate</p>
-                                        <div style={{
-                                            fontSize: '0.85rem',
-                                            color: '#f87171',
-                                            background: 'rgba(255,0,0,0.1)',
-                                            padding: '8px',
-                                            borderRadius: '6px',
-                                            maxWidth: '90%',
-                                            fontFamily: 'monospace',
-                                            marginBottom: '10px'
-                                        }}>
-                                            {diagrams[activeDiagram].error || "Unknown Error"}
-                                        </div>
-                                        <button className="btn-secondary" onClick={() => generateDiagram(activeDiagram)}>
-                                            ⟳ Retry Generation
-                                        </button>
+                                        <p>Generating...</p>
                                     </div>
                                 ) : diagrams[activeDiagram].url ? (
                                     <div className="preview-content">
-                                        <img
-                                            src={diagrams[activeDiagram].url}
-                                            alt="Diagram"
-                                        />
-                                        <div className="preview-actions">
-                                            <a href={diagrams[activeDiagram].url} target="_blank" rel="noreferrer" className="btn-icon">
-                                                ⤢ Fullscreen
-                                            </a>
+                                        <img src={diagrams[activeDiagram].url} alt="Diagram" style={{ maxWidth: '100%', height: 'auto' }} />
+                                        <div style={{ marginTop: '10px', display: 'flex', gap: '10px' }}>
+                                            <a href={diagrams[activeDiagram].url} target="_blank" rel="noreferrer" className="btn-icon">Full View</a>
+                                            <button
+                                                className="btn-icon"
+                                                onClick={() => generateDiagram(activeDiagram)}
+                                                disabled={diagrams[activeDiagram].status === 'loading'}
+                                            >
+                                                {diagrams[activeDiagram].status === 'loading' ? 'Processing...' : '⟳ Retry'}
+                                            </button>
                                         </div>
                                     </div>
                                 ) : (
                                     <div className="centered-state">
-                                        <p>No diagram yet</p>
-                                        <button className="btn-secondary" onClick={() => generateDiagram(activeDiagram)}>
-                                            Generate
+                                        <button
+                                            className="btn-primary"
+                                            onClick={() => generateDiagram(activeDiagram)}
+                                            disabled={diagrams[activeDiagram].status === 'loading'}
+                                        >
+                                            {diagrams[activeDiagram].status === 'loading' ? 'AI is thinking...' : `Generate ${diagrams[activeDiagram].label}`}
                                         </button>
                                     </div>
                                 )}
@@ -448,10 +536,15 @@ function DesignAgent({ onClose, onComplete }) {
 
                         <div className="step-actions">
                             <button className="btn-secondary" onClick={() => setStep('architecture')}>← Back</button>
-                            <button className="btn-primary" onClick={handleComplete}>✅ Finalize Design</button>
+                            <button className="btn-primary" onClick={handleComplete}>✅ Finalize & Review</button>
                         </div>
                     </div>
                 )}
+            </div>
+
+            {/* Status Overlay */}
+            <div style={{ position: 'fixed', bottom: '10px', left: '10px', background: 'rgba(0,0,0,0.8)', color: '#0f0', padding: '5px 10px', borderRadius: '5px', fontSize: '10px', zIndex: 10000, pointerEvents: 'none' }}>
+                System Status: {step.toUpperCase()} | Arch: {architecture ? 'OK' : 'WAIT'}
             </div>
         </div>
     )

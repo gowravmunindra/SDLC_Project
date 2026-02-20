@@ -31,22 +31,6 @@ function Agents() {
             role: 'Quality Assurance',
             description: 'Creates test plans, generates test cases, and validates code quality. Ensures comprehensive coverage.',
             capabilities: ['Test Plans', 'Automation', 'Coverage']
-        },
-        {
-            number: '05',
-            icon: '🚀',
-            name: 'Deployment Agent',
-            role: 'Release Management',
-            description: 'Handles CI/CD pipelines, deployment strategies, and infrastructure setup. Ensures smooth releases.',
-            capabilities: ['CI/CD', 'Docker', 'Cloud']
-        },
-        {
-            number: '06',
-            icon: '🔧',
-            name: 'Maintenance Agent',
-            role: 'Support & Evolution',
-            description: 'Monitors performance, suggests optimizations, and manages technical debt. Keeps your system healthy.',
-            capabilities: ['Monitoring', 'Optimization', 'Support']
         }
     ]
 
@@ -55,7 +39,7 @@ function Agents() {
             <div className="container">
                 <div className="section-header">
                     <h2 className="section-title">Meet Your AI Agents</h2>
-                    <p className="section-subtitle">Six specialized agents working together to automate your SDLC</p>
+                    <p className="section-subtitle">Four specialized agents working together to automate your SDLC</p>
                 </div>
                 <div className="agents-grid">
                     {agents.map((agent, index) => (

@@ -41,11 +41,11 @@ export const AuthProvider = ({ children }) => {
             setError(null)
             const response = await apiService.register(userData)
             const { token, ...user } = response.data
-            
+
             localStorage.setItem('token', token)
             localStorage.setItem('user', JSON.stringify(user))
             setUser(user)
-            
+
             return { success: true, user }
         } catch (error) {
             const message = error.response?.data?.message || 'Registration failed'
@@ -59,11 +59,11 @@ export const AuthProvider = ({ children }) => {
             setError(null)
             const response = await apiService.login(credentials)
             const { token, ...user } = response.data
-            
+
             localStorage.setItem('token', token)
             localStorage.setItem('user', JSON.stringify(user))
             setUser(user)
-            
+
             return { success: true, user }
         } catch (error) {
             const message = error.response?.data?.message || 'Login failed'
@@ -76,7 +76,7 @@ export const AuthProvider = ({ children }) => {
         localStorage.removeItem('token')
         localStorage.removeItem('user')
         setUser(null)
-        window.location.href = '/login'
+        window.location.href = '/'
     }
 
     const value = {

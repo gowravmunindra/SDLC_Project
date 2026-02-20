@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import { ProjectProvider } from './contexts/ProjectContext'
 import ProtectedRoute from './components/ProtectedRoute'
@@ -24,7 +24,7 @@ function App() {
                             <Route path="/" element={<HomePage />} />
                             <Route path="/login" element={<LoginPage />} />
                             <Route path="/register" element={<RegisterPage />} />
-                            
+
                             {/* Protected routes */}
                             <Route path="/projects" element={
                                 <ProtectedRoute><ProjectsPage /></ProtectedRoute>
@@ -45,14 +45,23 @@ function App() {
                                 <ProtectedRoute><TestingPage /></ProtectedRoute>
                             } />
                         </Routes>
-                        
+
                         {/* Chatbot is always available on all pages */}
-                        <ChatbotAgent />
+                        <ConditionalChatbot />
                     </div>
                 </ProjectProvider>
             </AuthProvider>
         </Router>
     )
+}
+
+function ConditionalChatbot() {
+    const location = useLocation();
+    // Hide only on dashboard as requested
+    if (location.pathname === '/dashboard') {
+        return null;
+    }
+    return <ChatbotAgent />;
 }
 
 export default App

@@ -1,27 +1,24 @@
-import DevelopmentAgent from '../components/DevelopmentAgent'
+import VibeCodingAgent from '../components/VibeCodingAgent'
 import { useNavigate } from 'react-router-dom'
 
 function DevelopmentPage() {
     const navigate = useNavigate()
-
-    const handleComplete = (data) => {
-        console.log('Development completed:', data)
-        // Navigate to testing phase
-        navigate('/testing')
-    }
 
     const handleClose = () => {
         // Navigate back to dashboard
         navigate('/dashboard')
     }
 
+    const handlePhaseComplete = () => {
+        // Immediately navigate to testing
+        navigate('/testing')
+    }
+
     return (
-        <div className="page-container">
-            <DevelopmentAgent 
-                onClose={handleClose}
-                onComplete={handleComplete}
-            />
-        </div>
+        <VibeCodingAgent
+            onClose={handleClose}
+            onComplete={handlePhaseComplete}
+        />
     )
 }
 

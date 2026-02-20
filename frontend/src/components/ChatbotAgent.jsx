@@ -16,6 +16,70 @@ function ChatbotAgent() {
     const [isTyping, setIsTyping] = useState(false)
     const messagesEndRef = useRef(null)
 
+    // Dragging state
+    const [position, setPosition] = useState({
+        x: window.innerWidth - 180,
+        y: window.innerHeight - 80
+    })
+    const [isDragging, setIsDragging] = useState(false)
+    const [hasDragged, setHasDragged] = useState(false)
+    const dragRef = useRef({ startX: 0, startY: 0, initialX: 0, initialY: 0 })
+
+    // Handle window resize to keep button in view
+    useEffect(() => {
+        const handleResize = () => {
+            setPosition(prev => ({
+                x: Math.min(prev.x, window.innerWidth - 60),
+                y: Math.min(prev.y, window.innerHeight - 60)
+            }))
+        }
+        window.addEventListener('resize', handleResize)
+        return () => window.removeEventListener('resize', handleResize)
+    }, [])
+
+    const onMouseDown = (e) => {
+        setIsDragging(true)
+        setHasDragged(false)
+        dragRef.current = {
+            startX: e.clientX,
+            startY: e.clientY,
+            initialX: position.x,
+            initialY: position.y
+        }
+    }
+
+    useEffect(() => {
+        const onMouseMove = (e) => {
+            if (!isDragging) return
+
+            const dx = e.clientX - dragRef.current.startX
+            const dy = e.clientY - dragRef.current.startY
+
+            if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+                setHasDragged(true)
+            }
+
+            setPosition({
+                x: Math.max(0, Math.min(window.innerWidth - 60, dragRef.current.initialX + dx)),
+                y: Math.max(0, Math.min(window.innerHeight - 60, dragRef.current.initialY + dy))
+            })
+        }
+
+        const onMouseUp = () => {
+            setIsDragging(false)
+        }
+
+        if (isDragging) {
+            window.addEventListener('mousemove', onMouseMove)
+            window.addEventListener('mouseup', onMouseUp)
+        }
+
+        return () => {
+            window.removeEventListener('mousemove', onMouseMove)
+            window.removeEventListener('mouseup', onMouseUp)
+        }
+    }, [isDragging])
+
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
@@ -380,24 +444,24 @@ Each test case includes:
             // Try AI response first
             const conversationHistory = messages.slice(-5) // Last 5 messages for context
             const prompt = chatbotPrompt(currentInput, conversationHistory)
-            
+
             const responseText = await huggingFaceService.generateContent(prompt)
-            
+
             const botResponse = {
                 id: messages.length + 2,
                 type: 'bot',
                 text: responseText,
                 timestamp: new Date()
             }
-            
+
             setMessages(prev => [...prev, botResponse])
             setIsTyping(false)
         } catch (error) {
             console.error('Chatbot error:', error)
-            
+
             // Fallback to knowledge base on error
             const match = findBestMatch(currentInput)
-            
+
             let botResponse
             if (match) {
                 botResponse = {
@@ -435,9 +499,22 @@ Each test case includes:
 
     return (
         <>
-            {/* Floating Chat Button */}
+            {/* Floating Chat Button - Movable */}
             {!isOpen && (
-                <button className="chatbot-toggle" onClick={() => setIsOpen(true)}>
+                <button
+                    className={`chatbot-toggle ${isDragging ? 'dragging' : ''}`}
+                    onMouseDown={onMouseDown}
+                    onClick={() => {
+                        if (!hasDragged) setIsOpen(true)
+                    }}
+                    style={{
+                        left: `${position.x}px`,
+                        top: `${position.y}px`,
+                        bottom: 'auto',
+                        right: 'auto',
+                        position: 'fixed'
+                    }}
+                >
                     <span className="chatbot-icon">💬</span>
                     <span className="chatbot-badge">AI Guide</span>
                 </button>

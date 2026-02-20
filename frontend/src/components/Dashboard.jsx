@@ -14,11 +14,9 @@ function Dashboard({ isOpen, onClose }) {
     const [showCreateModal, setShowCreateModal] = useState(false)
     const [phases, setPhases] = useState([
         { id: 'requirements', path: '/requirements', icon: '📋', name: 'Requirements Analysis', description: 'Define what to build', status: 'ready', locked: false },
-        { id: 'design', path: '/design', icon: '🎨', name: 'System Design', description: 'Plan the architecture', status: 'locked', locked: true },
-        { id: 'development', path: '/development', icon: '💻', name: 'Development', description: 'Build the solution', status: 'locked', locked: true },
-        { id: 'testing', path: '/testing', icon: '🧪', name: 'Testing & QA', description: 'Ensure quality', status: 'locked', locked: true },
-{ id: 'deployment', path: '#', icon: '🚀', name: 'Deployment', description: 'Release to production', status: 'locked', locked: true },
-        { id: 'maintenance', path: '#', icon: '🔧', name: 'Maintenance', description: 'Monitor & improve', status: 'locked', locked: true }
+        { id: 'design', path: '/design', icon: '🎨', name: 'System Design', description: 'Plan the architecture', status: 'ready', locked: false },
+        { id: 'development', path: '/development', icon: '💻', name: 'Development', description: 'Build the solution', status: 'ready', locked: false },
+        { id: 'testing', path: '/testing', icon: '🧪', name: 'Testing & QA', description: 'Ensure quality', status: 'ready', locked: false }
     ])
 
     // Check project data for completed phases when current project changes
@@ -26,7 +24,7 @@ function Dashboard({ isOpen, onClose }) {
         if (!currentProject) return
 
         const newPhases = [...phases]
-        
+
         // Check which phases are completed based on project data
         if (currentProject.requirements?.completedAt) {
             newPhases[0].status = 'completed'
@@ -45,8 +43,6 @@ function Dashboard({ isOpen, onClose }) {
         }
         if (currentProject.testing?.completedAt) {
             newPhases[3].status = 'completed'
-            newPhases[4].locked = false
-            newPhases[4].status = 'ready'
         }
 
         setPhases(newPhases)
@@ -54,7 +50,7 @@ function Dashboard({ isOpen, onClose }) {
 
     const handleStartPhase = (phase) => {
         if (phase.locked) return
-        
+
         // Navigate to the phase page
         if (phase.path !== '#') {
             navigate(phase.path)
@@ -95,7 +91,7 @@ function Dashboard({ isOpen, onClose }) {
                             </svg>
                             Validate Consistency
                         </button>
-                        <button 
+                        <button
                             onClick={logout}
                             style={{
                                 display: 'flex',
@@ -121,9 +117,9 @@ function Dashboard({ isOpen, onClose }) {
                             }}
                         >
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                                <polyline points="16 17 21 12 16 7"/>
-                                <line x1="21" y1="12" x2="9" y2="12"/>
+                                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                                <polyline points="16 17 21 12 16 7" />
+                                <line x1="21" y1="12" x2="9" y2="12" />
                             </svg>
                             Sign Out
                         </button>
@@ -143,7 +139,6 @@ function Dashboard({ isOpen, onClose }) {
                             <p>
                                 Complete phases sequentially: Requirements → Design → Development → Testing.
                                 Use the <strong>Validate Consistency</strong> button to check alignment between phases.
-                                The AI Chatbot (💬 bottom-right) is always available for guidance!
                             </p>
                         </div>
                     </div>
@@ -185,14 +180,13 @@ function Dashboard({ isOpen, onClose }) {
                             <li><strong>Validate Often:</strong> Use the Validate Consistency button to check alignment</li>
                             <li><strong>Revisit Phases:</strong> You can review completed phases anytime</li>
                             <li><strong>Export Artifacts:</strong> Download your work from each agent</li>
-                            <li><strong>Get Help:</strong> Click the AI Guide chatbot for assistance</li>
                         </ul>
                     </div>
                 </div>
             </div>
-            
+
             {/* Create Project Modal */}
-            <CreateProjectModal 
+            <CreateProjectModal
                 isOpen={showCreateModal}
                 onClose={() => setShowCreateModal(false)}
                 onSuccess={() => setShowCreateModal(false)}

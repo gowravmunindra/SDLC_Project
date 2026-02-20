@@ -377,8 +377,11 @@
 
 /* Preview Column (Right) */
 .diagram-column.preview-column {
-    background: #ffffff;
-    /* White bg for diagrams always */
+    background: #f8fafc;
+    background-image:
+        linear-gradient(rgba(203, 213, 225, 0.2) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(203, 213, 225, 0.2) 1px, transparent 1px);
+    background-size: 20px 20px;
     position: relative;
     display: flex;
     align-items: center;
@@ -524,9 +527,25 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding-top: 24px;
+    padding: 24px 0;
     border-top: 1px solid var(--border-color);
-    margin-top: auto;
+    margin-top: 32px;
+}
+
+.btn-secondary {
+    padding: 12px 24px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--primary-600);
 }
 
 /* Glass Panel Utility */

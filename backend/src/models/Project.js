@@ -20,7 +20,7 @@ const projectSchema = new mongoose.Schema({
         enum: ['planning', 'design', 'development', 'testing', 'completed'],
         default: 'planning'
     },
-    
+
     // Requirements Phase
     requirements: {
         projectDescription: String,
@@ -52,27 +52,27 @@ const projectSchema = new mongoose.Schema({
         ieeeFormat: mongoose.Schema.Types.Mixed,
         completedAt: Date
     },
-    
+
     // Design Phase
     design: {
-        architectureType: String,
-        components: mongoose.Schema.Types.Mixed,
-        useCases: mongoose.Schema.Types.Mixed,
-        erDiagrams: mongoose.Schema.Types.Mixed,
+        architecture: mongoose.Schema.Types.Mixed,
+        diagrams: mongoose.Schema.Types.Mixed,
         completedAt: Date
     },
-    
+
     // Development Phase
     development: {
-        framework: String,
+        techStack: mongoose.Schema.Types.Mixed,
+        structure: mongoose.Schema.Types.Mixed,
         codeFiles: mongoose.Schema.Types.Mixed,
-        dependencies: [String],
         completedAt: Date
     },
-    
+
     // Testing Phase
     testing: {
+        testStrategy: mongoose.Schema.Types.Mixed,
         testCases: mongoose.Schema.Types.Mixed,
+        edgeCases: mongoose.Schema.Types.Mixed,
         testResults: mongoose.Schema.Types.Mixed,
         coverageReport: mongoose.Schema.Types.Mixed,
         completedAt: Date

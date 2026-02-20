@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useProject } from '../contexts/ProjectContext'
 import apiService from '../services/apiService'
 import huggingFaceService from '../services/huggingFaceService'
@@ -8,7 +8,7 @@ import { generateIEEEPDF } from '../utils/ieeePDFGenerator'
 import { parseIEEEPDF, validateParsedData } from '../utils/pdfParser'
 
 function RequirementsAgent({ onClose, onComplete }) {
-    const { currentProject, updateProject } = useProject()
+    const { currentProject, updateProject, refreshCurrentProject } = useProject()
     const [step, setStep] = useState('input') // input, analysis, review, complete
     const [projectDescription, setProjectDescription] = useState('')
     const [functionalRequirements, setFunctionalRequirements] = useState([])
@@ -25,6 +25,49 @@ function RequirementsAgent({ onClose, onComplete }) {
     const [isAnalyzing, setIsAnalyzing] = useState(false)
     const [isImporting, setIsImporting] = useState(false)
 
+    // Load existing requirements data when component mounts or project changes
+    useEffect(() => {
+        if (currentProject && currentProject.requirements) {
+            const req = currentProject.requirements
+
+            // Load all existing data
+            if (req.projectDescription) {
+                setProjectDescription(req.projectDescription)
+            }
+
+            if (req.functionalRequirements && req.functionalRequirements.length > 0) {
+                setFunctionalRequirements(req.functionalRequirements)
+            }
+
+            if (req.nonFunctionalRequirements) {
+                setNonFunctionalRequirements({
+                    performance: req.nonFunctionalRequirements.performance || [],
+                    security: req.nonFunctionalRequirements.security || [],
+                    usability: req.nonFunctionalRequirements.usability || [],
+                    scalability: req.nonFunctionalRequirements.scalability || [],
+                    reliability: req.nonFunctionalRequirements.reliability || []
+                })
+            }
+
+            if (req.assumptions && req.assumptions.length > 0) {
+                setAssumptions(req.assumptions)
+            }
+
+            if (req.constraints && req.constraints.length > 0) {
+                setConstraints(req.constraints)
+            }
+
+            if (req.stakeholders && req.stakeholders.length > 0) {
+                setStakeholders(req.stakeholders)
+            }
+
+            // If we have requirements data, go directly to review step
+            if (req.functionalRequirements && req.functionalRequirements.length > 0) {
+                setStep('review')
+            }
+        }
+    }, [currentProject])
+
     const handleAnalyze = async () => {
         if (!projectDescription.trim()) {
             alert('Please provide a project description first!')
@@ -36,7 +79,7 @@ function RequirementsAgent({ onClose, onComplete }) {
         try {
             // Wait for AI analysis to complete
             await analyzeRequirements(projectDescription)
-            
+
             // Only move to review after we have data
             setIsAnalyzing(false)
             setStep('review')
@@ -51,10 +94,10 @@ function RequirementsAgent({ onClose, onComplete }) {
         try {
             // Generate prompt for Gemini
             const prompt = requirementsPrompt(description)
-            
+
             // Call Hugging Face AI
-            const result = await huggingFaceService.generateJSON(prompt)
-            
+            const result = await huggingFaceService.generateJSON(prompt, 2, true)
+
             // Set the generated requirements
             setFunctionalRequirements(result.functionalRequirements || [])
             setNonFunctionalRequirements(result.nonFunctionalRequirements || {
@@ -69,14 +112,14 @@ function RequirementsAgent({ onClose, onComplete }) {
             setConstraints(result.constraints || [])
         } catch (error) {
             console.error('Error analyzing requirements:', error)
-            
+
             // Fallback to basic requirements on error
             alert('AI analysis failed. Using fallback requirements. Error: ' + error.message)
-            
+
             // Generate basic fallback requirements
             const frs = []
             const lowerDesc = description.toLowerCase()
-            
+
             if (lowerDesc.includes('user') || lowerDesc.includes('login')) {
                 frs.push({
                     id: 'FR-001',
@@ -95,7 +138,7 @@ function RequirementsAgent({ onClose, onComplete }) {
                     editable: true
                 })
             }
-            
+
             frs.push({
                 id: `FR-00${frs.length + 1}`,
                 title: 'Core Functionality',
@@ -105,7 +148,7 @@ function RequirementsAgent({ onClose, onComplete }) {
             })
 
             setFunctionalRequirements(frs)
-            
+
             setNonFunctionalRequirements({
                 performance: [
                     { id: 'NFR-P-001', description: 'Page load time should be under 3 seconds', editable: true }
@@ -197,11 +240,11 @@ function RequirementsAgent({ onClose, onComplete }) {
 
         try {
             // Parse PDF using AI
-            const parsedData = await parseIEEEPDF(file)
-            
+            const parsedData = await parseIEEEPDF(file, true) // Pass true if parseIEEEPDF supports it, but usually it calls geminiService internally
+
             // Validate and clean data
             const validatedData = validateParsedData(parsedData)
-            
+
             // Populate all fields
             setProjectDescription(validatedData.projectDescription)
             setFunctionalRequirements(validatedData.functionalRequirements)
@@ -209,12 +252,12 @@ function RequirementsAgent({ onClose, onComplete }) {
             setStakeholders(validatedData.stakeholders)
             setAssumptions(validatedData.assumptions)
             setConstraints(validatedData.constraints)
-            
+
             setIsImporting(false)
             setStep('review')
-            
+
             alert('✅ IEEE SRS PDF imported successfully! Review and edit the requirements below.')
-            
+
         } catch (error) {
             console.error('PDF import failed:', error)
             setIsImporting(false)
@@ -230,15 +273,21 @@ function RequirementsAgent({ onClose, onComplete }) {
             assumptions,
             constraints,
             stakeholders,
-            generatedAt: new Date().toISOString()
+            completedAt: new Date().toISOString()
         }
 
         // Save to database using current project ID
         if (currentProject) {
             try {
                 await apiService.saveRequirements(currentProject._id, requirementsData)
-                // Update project context to refresh data
+
+                // Update project status
                 await updateProject(currentProject._id, { status: 'design' })
+
+                // Refresh the entire project to get updated requirements
+                await refreshCurrentProject()
+
+                console.log('[RequirementsAgent] Requirements saved and project refreshed')
             } catch (error) {
                 console.error('Error saving requirements:', error)
                 alert('Failed to save requirements. Please try again.')
@@ -247,13 +296,28 @@ function RequirementsAgent({ onClose, onComplete }) {
         }
 
         setStep('complete')
-        
+
         // Auto-navigate to next phase after a brief delay
         setTimeout(() => {
             if (onComplete) {
                 onComplete(requirementsData)
             }
         }, 1500)
+    }
+
+    const handleProceedToDesign = () => {
+        if (onComplete) {
+            const requirementsData = {
+                projectDescription,
+                functionalRequirements,
+                nonFunctionalRequirements,
+                assumptions,
+                constraints,
+                stakeholders,
+                completedAt: new Date().toISOString()
+            }
+            onComplete(requirementsData)
+        }
     }
 
     const exportRequirements = () => {
@@ -286,7 +350,7 @@ function RequirementsAgent({ onClose, onComplete }) {
 
         // Convert to IEEE format
         const ieeeData = convertToIEEEFormat(requirementsData)
-        
+
         // Generate and download IEEE PDF
         generateIEEEPDF(ieeeData)
     }
@@ -472,7 +536,7 @@ function RequirementsAgent({ onClose, onComplete }) {
                                         </button>
                                     </div>
                                     <div className="nfr-list">
-                                        {nfrs.map((nfr, index) => (
+                                        {(Array.isArray(nfrs) ? nfrs : []).map((nfr, index) => (
                                             <div key={nfr.id} className="nfr-item">
                                                 <span className="nfr-id">{nfr.id}</span>
                                                 <input

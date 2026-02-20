@@ -4347,6 +4347,7 @@ body {
     padding: 20px;
   }
 }
+
 .badge-primary {
   display: inline-block;
   padding: 4px 12px;
@@ -4360,3 +4361,9 @@ body {
   letter-spacing: 0.05em;
 }
 
+.chatbot-toggle.dragging {
+  transition: none !important;
+  cursor: grabbing !important;
+  opacity: 0.9;
+  animation: none !important;
+}

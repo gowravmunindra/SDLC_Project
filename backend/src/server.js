@@ -1,4 +1,6 @@
-require('dotenv').config()
+// Backend Server Entry
+const path = require('path')
+require('dotenv').config({ path: path.join(__dirname, '../.env') })
 const express = require('express')
 const cors = require('cors')
 const connectDB = require('./config/db')
@@ -17,6 +19,13 @@ app.use(express.urlencoded({ extended: false }))
 // Routes
 app.use('/api/auth', require('./routes/authRoutes'))
 app.use('/api/projects', require('./routes/projectRoutes'))
+app.use('/api/ai', require('./routes/aiRoutes'))
+app.use('/api/development', require('./routes/developmentRoutes'))
+app.use('/api/vibe-coding', require('./routes/vibeCodingRoutes'))
+
+// Initialize LLM Service (background load)
+const { initializeLlama } = require('./services/llmService')
+initializeLlama().catch(err => console.error('Failed to initialize LLM:', err))
 
 // Health check
 app.get('/api/health', (req, res) => {

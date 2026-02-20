@@ -11,6 +11,8 @@ build/
 frontend/dist/
 frontend/build/
 *.local
+UmlProject/
+models/
 
 # Environment variables
 .env
@@ -115,4 +117,3 @@ public/
 *.bak
 *.backup
 
-UmlProject/

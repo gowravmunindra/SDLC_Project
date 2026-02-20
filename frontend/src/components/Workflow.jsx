@@ -19,11 +19,6 @@ function Workflow() {
             number: 4,
             title: 'Test & Validate',
             description: 'Automated testing ensures quality and coverage. Review test results and fix issues.'
-        },
-        {
-            number: 5,
-            title: 'Deploy & Monitor',
-            description: 'Launch your application with confidence. Continuous monitoring keeps everything running smoothly.'
         }
     ]
 
@@ -32,7 +27,7 @@ function Workflow() {
             <div className="container">
                 <div className="section-header">
                     <h2 className="section-title">How It Works</h2>
-                    <p className="section-subtitle">From idea to deployment in simple steps</p>
+                    <p className="section-subtitle">From idea to testing in simple steps</p>
                 </div>
                 <div className="workflow-timeline">
                     {steps.map((step, index) => (

@@ -4,344 +4,153 @@
  */
 
 /**
- * Requirements Agent Prompt
+ * Requirements Agent Prompt - OPTIMIZED FOR SPEED
  */
 export const requirementsPrompt = (projectDescription) => {
-    return `You are an expert Business Analyst with 15+ years of experience in requirements gathering and analysis.
+  return `Act as a Senior Business Analyst. Analyze the following project description and generate a comprehensive Software Requirements Specification (SRS) in JSON format.
 
-**Task**: Analyze the following project description and generate comprehensive, professional requirements.
+Project Name/Description: ${projectDescription}
 
-**Project Description**:
-${projectDescription}
+STRICT QUALITY RULES:
+1. DO NOT use generic titles like "Process" or "Task". Be specific to the project (e.g., "Automated Invoice Generation").
+2. Descriptions must be detailed "The system shall..." statements.
+3. Functional requirements should cover: User Management, Core Logic, Inter-module communication, and Data Persistence.
 
-**Instructions**:
-1. Carefully analyze the project description
-2. Generate detailed Functional Requirements (what the system should DO)
-3. Generate Non-Functional Requirements (how the system should PERFORM)
-4. Identify key stakeholders
-5. Document reasonable assumptions
-6. Note any constraints or limitations
+Return JSON with:
+- functionalRequirements: array of {id, title, description, priority}
+- nonFunctionalRequirements: {performance, security, usability, scalability, reliability} arrays
+- stakeholders: array of {id, name, role}
+- assumptions: array of {id, description}
+- constraints: array of {id, description}
 
-**Output Format**: Return ONLY valid JSON (no markdown, no explanations) with this EXACT structure:
-
-{
-  "functionalRequirements": [
-    {
-      "id": "FR-001",
-      "title": "Brief requirement title",
-      "description": "Detailed description of what the system shall do",
-      "priority": "High" // or "Medium" or "Low"
-    }
-  ],
-  "nonFunctionalRequirements": {
-    "performance": [
-      {"id": "NFR-P-001", "description": "Performance requirement", "editable": true}
-    ],
-    "security": [
-      {"id": "NFR-S-001", "description": "Security requirement", "editable": true}
-    ],
-    "usability": [
-      {"id": "NFR-U-001", "description": "Usability requirement", "editable": true}
-    ],
-    "scalability": [
-      {"id": "NFR-SC-001", "description": "Scalability requirement", "editable": true}
-    ],
-    "reliability": [
-      {"id": "NFR-R-001", "description": "Reliability requirement", "editable": true}
-    ]
-  },
-  "stakeholders": [
-    {"id": "SH-001", "name": "Stakeholder name", "role": "Their role/interest", "editable": true}
-  ],
-  "assumptions": [
-    {"id": "A-001", "description": "Assumption statement", "editable": true}
-  ],
-  "constraints": [
-    {"id": "C-001", "description": "Constraint description", "editable": true}
-  ]
-}
-
-Generate at least 5 functional requirements, 2-3 items per NFR category, 3 stakeholders, 3 assumptions, and 3 constraints.`
+Aim for high-detail, professional-grade requirements.`
 }
 
 /**
- * Design Agent Prompt
+ * Design Agent Prompt - OPTIMIZED FOR SPEED
  */
 export const designPrompt = (requirements) => {
-    const reqJSON = JSON.stringify(requirements, null, 2)
-    
-    return `You are an expert System Architect. Design a system architecture based on these requirements.
+  const funcReqs = requirements?.functionalRequirements?.map(r => r.title).join(', ') || 'N/A'
+  const desc = requirements?.projectDescription || ''
 
-**Requirements**:
-${reqJSON}
+  return `Act as a Solution Architect. Design a high-level system architecture for a system with these requirements: ${funcReqs}
+Context: ${desc}
 
-**CRITICAL**: Return ONLY valid JSON. No markdown, no explanations. Keep descriptions concise (max 100 chars each).
+STRICT QUALITY RULES:
+1. Define a professional multi-tier or microservice architecture.
+2. Layers must have specific responsibilities and technology suggestions.
+3. Components should be logical units (e.g., "Auth Service", "Notification Engine", "Data Ingestion Pipeline").
 
-**Output JSON Structure**:
+Return JSON:
 {
-  "architecture": {
-    "type": "monolith",
-    "justification": "Brief reason for this choice",
-    "layers": [
-      {
-        "name": "Presentation Layer",
-        "description": "Brief description",
-        "technologies": ["React", "CSS"],
-        "responsibilities": ["UI", "State Management"]
-      }
-    ]
-  },
-  "components": [
-    {
-      "id": "C-001",
-      "name": "Component Name",
-      "description": "Brief description",
-      "responsibilities": ["Resp1", "Resp2"],
-      "interfaces": ["API endpoint"],
-      "dependencies": ["Other component"]
-    }
-  ],
+  "architecture": {"type": "type (e.g. Microservices)", "justification": "why", "layers": [{"name": "Layer Name", "description": "detailed desc", "technologies": ["tech1"], "responsibilities": ["resp1"]}]},
+  "components": [{"id": "C-001", "name": "Component Name", "description": "desc", "responsibilities": [], "interfaces": [], "dependencies": []}],
   "diagrams": {
-    "useCase": {
-      "description": "Shows user interactions",
-      "actors": [{"id": "A-001", "name": "User", "description": "Primary user"}],
-      "useCases": [{"id": "UC-001", "name": "Login", "actor": "User", "description": "User logs in"}]
-    },
-    "class": {
-      "description": "Shows system classes",
-      "classes": [
-        {
-          "id": "CL-001",
-          "name": "User",
-          "attributes": ["id: UUID", "email: String"],
-          "methods": ["login()", "logout()"],
-          "relationships": ["Has many Sessions"]
-        }
-      ]
-    },
-    "sequence": {
-      "description": "Shows process flows",
-      "flows": [
-        {
-          "id": "SEQ-001",
-          "name": "User Login",
-          "description": "Login process",
-          "steps": ["User enters credentials", "System validates", "Token generated"]
-        }
-      ]
-    }
+    "useCase": {"description": "desc", "actors": [{"id": "A-001", "name": "Actor Name", "description": "desc"}], "useCases": [{"id": "UC-001", "name": "Action Name", "actor": "Actor Name", "description": "desc"}]},
+    "class": {"description": "desc", "classes": [{"id": "CL-001", "name": "Class Name", "attributes": [], "methods": [], "relationships": []}]},
+    "sequence": {"description": "desc", "flows": [{"id": "SEQ-001", "name": "Flow Name", "description": "desc", "steps": []}]}
   },
-  "databaseSchema": {
-    "type": "relational",
-    "justification": "Brief reason",
-    "tables": [
-      {
-        "id": "T-001",
-        "name": "users",
-        "description": "Stores users",
-        "columns": [
-          {
-            "name": "id",
-            "type": "UUID",
-            "constraints": "PRIMARY KEY",
-            "description": "User ID"
-          }
-        ],
-        "indexes": ["email"],
-        "relationships": ["One-to-Many with sessions"]
-      }
-    ]
-  }
+  "databaseSchema": {"type": "relational/nosql", "justification": "reason", "tables": [{"id": "T-001", "name": "Table Name", "description": "desc", "columns": [{"name": "col", "type": "type", "constraints": "PK", "description": "desc"}], "indexes": [], "relationships": []}]}
 }
 
-Generate 3 layers, 3-5 components, 2 actors, 3 use cases, 2 classes, 2 flows, 2-3 tables. Keep all text concise.`
+Be detailed and professional.`
 }
 
 /**
- * Development Agent Prompt
+ * Development Agent Prompt - OPTIMIZED FOR SPEED
  */
 export const developmentPrompt = (requirements, design) => {
-    const reqJSON = JSON.stringify(requirements, null, 2)
-    const designJSON = JSON.stringify(design, null, 2)
-    
-    return `You are an expert Full-Stack Developer with expertise in modern web technologies, best practices, and clean code principles.
+  const archType = design?.architecture?.type || 'web app'
 
-**Task**: Generate development artifacts based on the requirements and design below.
+  return `Generate development plan for ${archType}.
 
-**Requirements**:
-${reqJSON}
-
-**Design**:
-${designJSON}
-
-**Instructions**:
-1. Recommend modern, production-ready technology stack
-2. Provide complete project folder structure
-3. Generate actual, working code snippets (not pseudocode)
-4. Document API contracts with request/response formats
-5. Share development best practices
-
-**Output Format**: Return ONLY valid JSON:
-
+Return JSON:
 {
-  "techStack": {
-    "frontend": [{"name": "React", "purpose": "UI library", "why": "Component-based, large ecosystem"}],
-    "backend": [{"name": "Node.js", "purpose": "Runtime", "why": "JavaScript everywhere"}],
-    "database": [{"name": "PostgreSQL", "purpose": "Primary DB", "why": "ACID compliant"}],
-    "devops": [{"name": "Docker", "purpose": "Containerization", "why": "Consistent environments"}],
-    "testing": [{"name": "Jest", "purpose": "Testing", "why": "Fast, powerful"}]
-  },
-  "folderStructure": [
-    {
-      "name": "project-root",
-      "type": "folder",
-      "description": "Root directory",
-      "children": [
-        {"name": "src", "type": "folder", "description": "Source code", "children": []}
-      ]
-    }
-  ],
-  "codeSnippets": [
-    {
-      "id": "CS-001",
-      "title": "Snippet title",
-      "language": "javascript",
-      "description": "What this code does",
-      "code": "// Actual working code here"
-    }
-  ],
-  "apiContracts": [
-    {
-      "id": "API-001",
-      "endpoint": "POST /api/endpoint",
-      "description": "What this API does",
-      "request": {"body": {"field": "type"}},
-      "response": {
-        "success": {"status": 200, "body": {}},
-        "error": {"status": 400, "body": {}}
-      }
-    }
-  ],
-  "bestPractices": [
-    {
-      "category": "Category Name",
-      "icon": "📁",
-      "practices": ["Best practice 1", "Best practice 2"]
-    }
-  ]
+  "techStack": {"frontend": [{"name": "React", "purpose": "UI", "why": "reason"}], "backend": [], "database": [], "devops": [], "testing": []},
+  "folderStructure": [{"name": "root", "type": "folder", "description": "desc", "children": []}],
+  "codeSnippets": [{"id": "CS-001", "title": "title", "language": "javascript", "description": "desc", "code": "code"}],
+  "apiContracts": [{"id": "API-001", "endpoint": "POST /api/x", "description": "desc", "request": {}, "response": {"success": {}, "error": {}}}],
+  "bestPractices": [{"category": "Category", "icon": "📁", "practices": []}]
 }
 
-Generate realistic, project-specific artifacts.`
+Generate 2-3 items per category.`
 }
 
 /**
- * Testing Agent Prompt
+ * Testing Agent Prompt - REBUILT FOR STRUCTURED AI TEST DESIGN
  */
 export const testingPrompt = (requirements, design) => {
-    const reqJSON = JSON.stringify(requirements, null, 2)
-    const designJSON = design ? JSON.stringify(design, null, 2) : 'N/A'
-    
-    return `You are an expert QA Engineer and Test Architect with deep knowledge of testing strategies, methodologies, and quality assurance.
+  const funcReqs = requirements?.functionalRequirements?.map(r => `${r.id}: ${r.title} - ${r.description}`).join('\n') || 'N/A'
+  const components = design?.components?.map(c => `${c.name}: ${c.description}`).join('\n') || 'N/A'
+  const architecture = design?.architecture?.type || 'N/A'
 
-**Task**: Create a comprehensive testing plan based on the requirements and design.
+  return `Act as a Senior QA Automation Engineer. Generate a professional Testing Plan for a system with these specs:
 
-**Requirements**:
-${reqJSON}
+### REQUIREMENTS:
+${funcReqs}
 
-**Design**:
-${designJSON}
+### SYSTEM DESIGN (${architecture}):
+${components}
 
-**Instructions**:
-1. Develop a multi-level testing strategy
-2. Create detailed, executable test cases
-3. Define integration test scenarios
-4. Identify critical edge cases
-5. Map requirements to test cases (traceability)
-6. Identify risk areas with mitigation
+### INSTRUCTIONS:
+1. **TEST STRATEGY**: Brief overview of Unit, Integration, and System testing.
+2. **FUNCTIONAL TEST CASES**: Generate between **8 to 18** detailed test cases derived from requirements.
+3. **EDGE CASES**: Generate exactly **5 to 6** high-priority edge cases (boundary conditions, null inputs, failure scenarios).
+4. **CONCISENESS**: Keep descriptions and steps brief but clear to ensure fast processing.
 
-**Output Format**: Return ONLY valid JSON:
-
+### OUTPUT FORMAT:
+Return ONLY valid JSON:
 {
   "testStrategy": {
-    "overview": "Testing strategy overview",
+    "overview": "Workflow overview...",
     "testLevels": [
       {
         "level": "Unit Testing",
-        "description": "What to test",
+        "description": "Short desc",
         "coverage": "80%",
         "tools": ["Jest"],
-        "responsibility": "Developers",
-        "when": "During development"
+        "when": "Dev"
       }
-    ],
-    "testingTypes": [
-      {"type": "Functional Testing", "description": "Description"}
     ]
   },
   "testCases": [
     {
       "id": "TC-001",
-      "requirement": "FR-001",
-      "title": "Test case title",
-      "priority": "High",
-      "type": "Functional",
-      "preconditions": ["Precondition 1"],
-      "steps": ["Step 1", "Step 2"],
-      "expectedResult": "What should happen",
-      "testData": {"field": "value"},
-      "status": "Not Executed"
-    }
-  ],
-  "integrationTests": [
-    {
-      "id": "IT-001",
-      "title": "Integration test title",
-      "description": "What this tests",
-      "components": ["Component1", "Component2"],
-      "steps": ["Step 1"],
-      "expectedResult": "Expected outcome",
-      "testData": "Test data description"
+      "moduleName": "Module",
+      "description": "What is tested",
+      "preconditions": "Setup",
+      "testSteps": ["Step 1", "Step 2"],
+      "expectedResult": "Success"
     }
   ],
   "edgeCases": [
     {
       "id": "EC-001",
-      "category": "Input Validation",
-      "scenario": "Edge case scenario",
-      "testData": "Test data",
-      "expectedBehavior": "How system should behave",
-      "riskLevel": "High"
+      "category": "Boundary",
+      "scenario": "Scenario name",
+      "testData": "Input data",
+      "expectedBehavior": "How it handles it"
     }
-  ],
-  "riskAreas": [
-    {
-      "area": "Risk area name",
-      "risk": "High",
-      "description": "Why this is risky",
-      "mitigation": ["Mitigation 1"],
-      "testCoverage": ["TC-001"]
-    }
-  ],
-  "traceabilityMatrix": []
+  ]
 }
 
-Create comprehensive, realistic test scenarios.`
+STRICT RULE: No text outside JSON. Be concise.`
 }
 
 /**
  * Chatbot Prompt
  */
 export const chatbotPrompt = (userMessage, conversationHistory = [], currentPhase = null) => {
-    const historyText = conversationHistory.map(msg => 
-        `${msg.type === 'user' ? 'User' : 'Assistant'}: ${msg.text}`
-    ).join('\n')
-    
-    let phaseContext = ''
-    if (currentPhase) {
-        phaseContext = `\nThe user is currently in the **${currentPhase} Phase** of the SDLC process.`
-    }
-    
-    return `You are an AI SDLC Guide - a friendly, knowledgeable assistant helping users understand software development concepts and navigate the SDLC platform.
+  const historyText = conversationHistory.map(msg =>
+    `${msg.type === 'user' ? 'User' : 'Assistant'}: ${msg.text}`
+  ).join('\n')
+
+  let phaseContext = ''
+  if (currentPhase) {
+    phaseContext = `\nThe user is currently in the **${currentPhase} Phase** of the SDLC process.`
+  }
+
+  return `You are an AI SDLC Guide - a friendly, knowledgeable assistant helping users understand software development concepts and navigate the SDLC platform.
 
 **Your Role**:
 - Explain SDLC concepts in simple, understandable terms
@@ -371,9 +180,9 @@ ${userMessage}
 }
 
 export default {
-    requirementsPrompt,
-    designPrompt,
-    developmentPrompt,
-    testingPrompt,
-    chatbotPrompt
+  requirementsPrompt,
+  designPrompt,
+  developmentPrompt,
+  testingPrompt,
+  chatbotPrompt
 }
