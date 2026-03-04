@@ -23,14 +23,11 @@ app.use('/api/ai', require('./routes/aiRoutes'))
 app.use('/api/development', require('./routes/developmentRoutes'))
 app.use('/api/vibe-coding', require('./routes/vibeCodingRoutes'))
 
-// Initialize LLM Service (background load)
-const { initializeLlama } = require('./services/llmService')
-initializeLlama().catch(err => console.error('Failed to initialize LLM:', err))
-
 // Health check
 app.get('/api/health', (req, res) => {
     res.json({ message: 'Server is running!' })
 })
+
 
 // Error handler (must be last)
 app.use(errorHandler)

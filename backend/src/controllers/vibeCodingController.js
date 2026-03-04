@@ -74,7 +74,8 @@ exports.updateProject = async (req, res) => {
 };
 
 exports.verifyApiKey = async (req, res) => {
-  const key = process.env.LLM_API_KEY;
-  if (!key || key.includes('your_actual_key')) return res.status(404).json({ success: false });
+  const key = process.env.MISTRAL_API_KEY;
+  if (!key || key === '' || key.includes('your_mistral_key')) return res.status(404).json({ success: false });
   res.json({ success: true });
 };
+

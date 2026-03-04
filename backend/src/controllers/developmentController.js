@@ -1,5 +1,5 @@
 const Project = require('../models/Project');
-const freeLlmService = require('../services/freeLlmService');
+const mistralService = require('../services/mistralService');
 
 // Helper to summarize diagrams for context
 const getDiagramSummary = (diagrams) => {
@@ -17,14 +17,14 @@ const getDiagramSummary = (diagrams) => {
 // Verify API Key
 const verifyApiKey = async (req, res) => {
   try {
-    const apiKey = process.env.LLM_API_KEY;
-    if (!apiKey || apiKey === 'apf_your_actual_key_here') {
+    const apiKey = process.env.MISTRAL_API_KEY;
+    if (!apiKey || apiKey === 'your_mistral_key_here') {
       return res.status(404).json({
         success: false,
-        message: "LLM_API_KEY not found in backend .env file. Please configure your ApiFreeLLM key before starting development."
+        message: "MISTRAL_API_KEY not found in backend .env file. Please configure your Mistral API key before starting development."
       });
     }
-    res.json({ success: true, message: "External API Key Verified." });
+    res.json({ success: true, message: "Mistral API Key Verified." });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -66,7 +66,7 @@ Output Format: Provide ONLY a JSON object.
   ]
 }`;
 
-    const result = await freeLlmService.generateJSON(prompt);
+    const result = await mistralService.generateJSON(prompt);
     res.json({ success: true, data: result });
   } catch (error) {
     console.error('Tech Stack Generation Error:', error);
@@ -108,7 +108,7 @@ Output Format:
     "children": [ ... ]
   }
 }`;
-    const result = await freeLlmService.generateJSON(prompt);
+    const result = await mistralService.generateJSON(prompt);
     res.json({ success: true, data: result });
   } catch (error) {
     console.error('Structure Generation Error:', error);
@@ -145,7 +145,7 @@ ${diagramSummary}
 
 Output the complete, perfect source code now:`;
 
-    const code = await freeLlmService.generate(prompt);
+    const code = await mistralService.generate(prompt);
     res.json({ success: true, filePath, code });
   } catch (error) {
     console.error('Code Generation Error:', error);
@@ -159,3 +159,4 @@ module.exports = {
   generateStructure,
   generateCode
 };
+

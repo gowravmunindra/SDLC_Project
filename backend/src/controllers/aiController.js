@@ -1,32 +1,13 @@
-const freeLlmService = require('../services/freeLlmService');
-const llmService = require('../services/llmService');
-
-/**
- * Helper to determine which service to use
- */
-const getLlmService = (forceLocal) => {
-    if (forceLocal && llmService) {
-        console.log('[AIController] Explicitly using Local LLM as requested.');
-        return llmService;
-    }
-    return freeLlmService;
-};
+const mistralService = require('../services/mistralService');
 
 const generateContent = async (req, res) => {
     try {
-        const { prompt, forceLocal } = req.body;
+        const { prompt } = req.body;
         if (!prompt) {
             return res.status(400).json({ message: 'Prompt is required' });
         }
 
-        const activeService = getLlmService(forceLocal);
-        const genMethod = activeService.generate || activeService.generateContent;
-
-        if (typeof genMethod !== 'function') {
-            throw new Error(`AI Service does not support generation [forceLocal: ${forceLocal}]`);
-        }
-
-        const response = await genMethod.call(activeService, prompt);
+        const response = await mistralService.generateContent(prompt);
         res.json({ text: response });
     } catch (error) {
         console.error('AI Generation Error:', error);
@@ -36,13 +17,12 @@ const generateContent = async (req, res) => {
 
 const generateJSON = async (req, res) => {
     try {
-        const { prompt, forceLocal } = req.body;
+        const { prompt } = req.body;
         if (!prompt) {
             return res.status(400).json({ message: 'Prompt is required' });
         }
 
-        const activeService = getLlmService(forceLocal);
-        const jsonResponse = await activeService.generateJSON(prompt);
+        const jsonResponse = await mistralService.generateJSON(prompt);
 
         if (!jsonResponse) {
             return res.status(500).json({ message: 'Failed to generate valid JSON' });
@@ -56,21 +36,12 @@ const generateJSON = async (req, res) => {
 
 const chat = async (req, res) => {
     try {
-        const { messages, forceLocal } = req.body;
+        const { messages } = req.body;
         if (!messages || !Array.isArray(messages)) {
             return res.status(400).json({ message: 'Messages array is required' });
         }
 
-        const activeService = getLlmService(forceLocal);
-        const lastMsg = messages[messages.length - 1];
-        const prompt = lastMsg.parts || lastMsg.content;
-
-        const genMethod = activeService.generate || activeService.generateContent;
-        if (typeof genMethod !== 'function') {
-            throw new Error(`AI Service [Chat] does not support generation [forceLocal: ${forceLocal}]`);
-        }
-
-        const response = await genMethod.call(activeService, prompt);
+        const response = await mistralService.chat(messages);
         res.json({ text: response });
     } catch (error) {
         console.error('AI Chat Error:', error);
@@ -83,3 +54,4 @@ module.exports = {
     generateJSON,
     chat
 };
+

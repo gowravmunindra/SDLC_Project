@@ -149,7 +149,7 @@ Keep it professional and specific to the project.`;
     }
 
     const constructDiagramPrompt = (type, projectName, reqs, arch) => {
-        const functionalReqs = reqs?.functionalRequirements?.slice(0, 4).map(r => r.title).join(', ') || 'Core features';
+        const functionalReqs = reqs?.functionalRequirements?.slice(0, 5).map(r => r.title).join(', ') || 'Core features';
 
         const typeSpecs = {
             useCase: {
@@ -166,11 +166,11 @@ Keep it professional and specific to the project.`;
             },
             activity: {
                 blueprint: "start\n:Initialize;\nif (Valid?) then (yes)\n  :Process;\nelse (no)\n  :Error;\nendif\nstop",
-                rules: "Use 'start', 'stop', 'if/then/else', and ':Action;'. NO actors, NO classes."
+                rules: "STRICT NEW SYNTAX: Use 'start' and 'stop'. Actions MUST be wrapped like ':Action Name;'. Use 'if (label?) then (yes) ... else (no) ... endif' for logic. NO arrows (->) for simple sequences; just list the :Actions; sequentially."
             },
             state: {
-                blueprint: "[*] -> Idle\nIdle -> Processing : start\nProcessing -> Idle : finish\nProcessing -> [*]",
-                rules: "Use '[*]' for entry/exit. Use 'State -> State : Event'. NO participants."
+                blueprint: "[*] --> Idle\nIdle --> Processing : start\nProcessing --> Idle : finish\nProcessing --> [*]",
+                rules: "Use '[*]' for entry/exit points. Transitions MUST use double dashes like 'State1 --> State2 : Event'. Use 'state \"Label\" as Alias' for complex names."
             },
             component: {
                 blueprint: "[API Gate] as API\n[Auth Service] as Auth\nAPI ..> Auth : uses",
@@ -185,22 +185,19 @@ Keep it professional and specific to the project.`;
         const spec = typeSpecs[type];
 
         return `Act as a Senior Software Architect. Generate a syntactically PERFECT PlantUML ${type} diagram for "${projectName}".
-Features to include: ${functionalReqs}
+Objective: Visualize ${functionalReqs} for the system.
 
-STRICT ARCHITECTURAL RULES for ${type.toUpperCase()}:
+STRICT ARCHITECTURAL RULES:
 1. TYPE-STRICT SYNTAX: ${spec.rules}
-2. ALIASES: Define everything with an alias: [Type] "Display Name" as ALIAS.
-3. CONNECTIVITY: Connect everything via ALIASES only (ALIAS1 -> ALIAS2).
+2. ALIASES: Define complex elements with aliases: [Type] "Display Name" as ALIAS.
+3. CONNECTIVITY: Connect everything via ALIASES only (ALIAS1 -> ALIAS2). Use double dashes --> for long connections.
 4. QUOTES: Always wrap display names in "double quotes".
+5. NO CONVERSATION: Return ONLY the @startuml ... @enduml block.
 
-EXAMPLE BLUEPRINT:
+EXAMPLE STRUCTURE:
 ${spec.blueprint}
 
-Essential Output Rules:
-- Start with @startuml and end with @enduml.
-- Output ONLY valid PlantUML code. No chat, no intro.
-- Keep output concise (max 5-6 total elements).
-- Ensure professional, technical naming.`;
+Ensure professional, technical naming and logically sound flow.`;
     }
 
     const generateDiagram = async (type) => {
@@ -218,60 +215,50 @@ Essential Output Rules:
             // 1. Clean and Sanitize
             let code = cleanPlantUML(codeRaw)
 
-            // 2. Check for AI refusals
+            // 2. Check for AI refusals or empty output
             const hasTags = code.toLowerCase().includes('@startuml') && code.toLowerCase().includes('@enduml')
-            const isRefusal = codeRaw.toLowerCase().includes('sorry') ||
-                (codeRaw.toLowerCase().includes('assist') && !hasTags) ||
-                (codeRaw.toLowerCase().includes('cannot') && !hasTags && codeRaw.length < 100);
-
-            if (!hasTags && isRefusal) {
-                console.warn(`[DesignAgent] AI Refusal Detected for ${type}. Using fallback template.`)
-
-                // Fallback Logic: Provide a basic template so the user isn't stuck
-                const fallbackTemplates = {
-                    useCase: `@startuml\nactor User\nUser -> (Use Case 1)\n@enduml`,
-                    class: `@startuml\nclass CoreEntity {\n  +id: string\n}\n@enduml`,
-                    sequence: `@startuml\nactor User\nparticipant System\nUser -> System: Action\nSystem -> User: Result\n@enduml`,
-                    activity: `@startuml\nstart\n:Initialize;\n:Process Task;\nstop\n@enduml`,
-                    state: `@startuml\n[*] --> Idle\nIdle --> Processing : Start\nProcessing --> [*]\n@enduml`,
-                    component: `@startuml\n[Component A] -> [Component B]\n@enduml`,
-                    deployment: `@startuml\nnode Server {\n  [Application]\n}\n@enduml`
-                };
-                code = fallbackTemplates[type] || fallbackTemplates.useCase;
+            if (!hasTags && (codeRaw.length < 100 || codeRaw.toLowerCase().includes('sorry'))) {
+                throw new Error("AI failed to generate a valid diagram. Please retry.");
             }
 
             // 3. Fallback: if no tags but it looks like code, try to wrap it
-            if (!hasTags && codeRaw.length > 20 && !isRefusal) {
+            if (!hasTags && codeRaw.length > 20) {
                 code = '@startuml\n' + codeRaw.replace(/```[a-z]*\s*/g, '').replace(/```\s*/g, '') + '\n@enduml'
-                code = cleanPlantUML(code) // Re-clean to be safe
+                code = cleanPlantUML(code)
             }
 
             // 4. Force tags if still missing
             if (!code.toLowerCase().includes('@startuml')) code = '@startuml\n' + code
             if (!code.toLowerCase().includes('@enduml')) code = code + '\n@enduml'
 
-            // 5. Inject styles and fix syntax
+            // 5. Inject styles
             if (!code.toLowerCase().includes('skinparam')) {
                 code = code.replace(/@startuml/i, `@startuml\n${DIAGRAM_STYLE}\n`);
             }
 
+            // 6. TYPE-SPECIFIC SYNTAX FIXES
             code = code
                 .replace(/\/\//g, "'") // Fix invalid C-style comments
                 .replace(/-\s+>/g, '->')
                 .replace(/--\s+>/g, '-->');
 
-            code = code.trim();
-
-            // TYPE-SPECIFIC FIXES
             if (type === 'activity') {
-                // Ensure activity diagrams have start/stop if missing
+                // Fix common activity diagram errors
                 if (!code.includes('start')) code = code.replace('@startuml', '@startuml\nstart');
                 if (!code.includes('stop') && !code.includes('end')) code = code.replace('@enduml', 'stop\n@enduml');
-                // Common mistake: using sequence arrows in activity diagrams
-                // But only if it's clearly an activity diagram (has : or ;)
-                if (code.includes(':') || code.includes(';')) {
-                    code = code.replace(/(\w+)\s*->\s*(\w+)/g, ':$1;\n:$2;');
-                }
+
+                // Ensure lines like ":Action" become ":Action;"
+                code = code.split('\n').map(line => {
+                    const l = line.trim();
+                    if (l.startsWith(':') && !l.endsWith(';')) return line + ';';
+                    return line;
+                }).join('\n');
+            }
+
+            if (type === 'state') {
+                // Ensure state diagrams use standard arrows
+                code = code.replace(/\[ \* \]/g, '[*]');
+                code = code.replace(/->/g, '-->');
             }
 
             code = code.trim();
@@ -285,6 +272,7 @@ Essential Output Rules:
                     status: 'done'
                 }
             }))
+
         } catch (error) {
             console.error(`[DesignAgent] Generation Error [${type}]:`, error)
             setDiagrams(prev => ({
