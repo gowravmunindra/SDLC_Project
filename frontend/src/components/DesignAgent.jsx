@@ -149,55 +149,55 @@ Keep it professional and specific to the project.`;
     }
 
     const constructDiagramPrompt = (type, projectName, reqs, arch) => {
-        const functionalReqs = reqs?.functionalRequirements?.slice(0, 5).map(r => r.title).join(', ') || 'Core features';
+        const functionalReqs = reqs?.functionalRequirements?.slice(0, 3).map(r => r.title).join(', ') || 'Core workflows';
 
         const typeSpecs = {
             useCase: {
-                blueprint: "actor \"User\" as U\nusecase \"Login System\" as UC1\nU -> UC1",
-                rules: "Use ONLY 'actor' and 'usecase' (oval). Connect with simple arrows. NO classes, NO boxes."
+                blueprint: "actor \"User\" as U\nusecase \"Core Feature\" as UC1\nU --> UC1",
+                rules: "Focus on primary actors and 3-4 key use cases. Use simple arrows -->."
             },
             class: {
-                blueprint: "class \"UserEntity\" as UE {\n  +id: string\n  +login()\n}\nclass \"Database\" as DB\nUE -> DB : persists",
-                rules: "Use 'class' blocks with { fields }. Use relationships like '->', '--*', or '<|--'. NO actors, NO clouds."
+                blueprint: "class \"CoreEntity\" {\n  +id: string\n  +update()\n}\nclass \"Service\" {\n  +execute()\n}\nCoreEntity -- Service",
+                rules: "Show only 3-4 core classes. Include 2-3 essential fields/methods per class. Keep relationships simple."
             },
             sequence: {
-                blueprint: "actor \"Client\" as C\nparticipant \"Server\" as S\nC -> S : GET /data\nS -> C : 200 OK",
-                rules: "Use 'actor' and 'participant'. Use horizontal arrows only. NO boxes, NO inheritance."
+                blueprint: "actor \"User\" as U\nparticipant \"Controller\" as C\nparticipant \"DB\" as D\nU -> C: Request\nC -> D: Query\nD --> C: Result\nC --> U: Response",
+                rules: "Show 3-5 key participants. Map one primary success path. Use clean horizontal arrows."
             },
             activity: {
-                blueprint: "start\n:Initialize;\nif (Valid?) then (yes)\n  :Process;\nelse (no)\n  :Error;\nendif\nstop",
-                rules: "STRICT NEW SYNTAX: Use 'start' and 'stop'. Actions MUST be wrapped like ':Action Name;'. Use 'if (label?) then (yes) ... else (no) ... endif' for logic. NO arrows (->) for simple sequences; just list the :Actions; sequentially."
+                blueprint: "start\n:User Input;\nif (Valid?) then (yes)\n  :Process Action;\nelse (no)\n  :Show Error;\nendif\nstop",
+                rules: "Show a simple flow from start to stop. Use :Action; syntax. Avoid external entity definitions unless critical."
             },
             state: {
-                blueprint: "[*] --> Idle\nIdle --> Processing : start\nProcessing --> Idle : finish\nProcessing --> [*]",
-                rules: "Use '[*]' for entry/exit points. Transitions MUST use double dashes like 'State1 --> State2 : Event'. Use 'state \"Label\" as Alias' for complex names."
+                blueprint: "[*] --> Idle\nIdle --> Active : Start\nActive --> [*] : End",
+                rules: "Show 3-4 essential states. Use clear transition labels."
             },
             component: {
-                blueprint: "[API Gate] as API\n[Auth Service] as Auth\nAPI ..> Auth : uses",
-                rules: "Use '[Component Name]' notation. Use dashed arrows '..>' for dependencies. NO actors."
+                blueprint: "[Frontend] ..> [API] : JSON\n[API] ..> [DB] : SQL",
+                rules: "High-level overview only. Show 3-4 main architectural blocks."
             },
             deployment: {
-                blueprint: "node \"AWS Cloud\" as Cloud {\n  node \"Web Server\" as Web\n  database \"PostgreSQL\" as DB\n}\nWeb -> DB",
-                rules: "Use 'node', 'database', or 'cloud'. Show physical nesting with { }. NO 'usecase' or 'actor'."
+                blueprint: "node \"Server\" {\n  [App]\n}\ndatabase \"Store\" {\n  [DB]\n}\nApp -> Store",
+                rules: "Show only physical infrastructure (Server, DB, Cluster)."
             }
         };
 
         const spec = typeSpecs[type];
 
-        return `Act as a Senior Software Architect. Generate a syntactically PERFECT PlantUML ${type} diagram for "${projectName}".
-Objective: Visualize ${functionalReqs} for the system.
+        return `Act as a Professional Software Architect. Generate a MINIMAL, PRODUCTION-READY PlantUML ${type} diagram for "${projectName}".
+Objective: Visualize ${functionalReqs}.
 
-STRICT ARCHITECTURAL RULES:
-1. TYPE-STRICT SYNTAX: ${spec.rules}
-2. ALIASES: Define complex elements with aliases: [Type] "Display Name" as ALIAS.
-3. CONNECTIVITY: Connect everything via ALIASES only (ALIAS1 -> ALIAS2). Use double dashes --> for long connections.
-4. QUOTES: Always wrap display names in "double quotes".
-5. NO CONVERSATION: Return ONLY the @startuml ... @enduml block.
+STRICT GENERATION RULES:
+1. MINIMALISM: Show ONLY the most critical 5-8 elements/steps. Avoid bloat.
+2. CLEAN CODE: No unnecessary comments, aliases, or headers. Define elements directly unless aliases are needed for clarity.
+3. PRODUCTION LEVEL: Professional naming, clean logic, and standard syntax.
+4. SYNTAX: ${spec.rules}
+5. NO CONVERSATION: Return ONLY the @startuml ... @enduml block. No explanations.
 
-EXAMPLE STRUCTURE:
+BLUEPRINT:
 ${spec.blueprint}
 
-Ensure professional, technical naming and logically sound flow.`;
+Ensure the diagram is readable, technically accurate, and focused.`;
     }
 
     const generateDiagram = async (type) => {
