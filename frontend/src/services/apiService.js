@@ -80,6 +80,10 @@ const apiService = {
     saveTesting: (projectId, data) => api.post(`/projects/${projectId}/testing`, data),
     getTesting: (projectId) => api.get(`/projects/${projectId}`).then(res => res.data.testing),
 
+    // Progress Tracking & Consistency Validation
+    getProjectProgress: (projectId) => api.get(`/projects/${projectId}/progress`),
+    validateConsistency: (projectId) => api.post(`/projects/${projectId}/validate`),
+
     // Vibe Coding (Creative Generation)
     vibeGenerate: (payload) => api.post('/vibe-coding/generate-project', payload),
     vibeUpdate: (payload) => api.post('/vibe-coding/update-project', payload)

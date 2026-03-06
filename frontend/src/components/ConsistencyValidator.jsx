@@ -1,398 +1,87 @@
 import { useState, useEffect } from 'react'
+import { useProject } from '../contexts/ProjectContext'
+import apiService from '../services/apiService'
 
 function ConsistencyValidator({ onClose }) {
+    const { currentProject } = useProject()
     const [isValidating, setIsValidating] = useState(true)
     const [validationResults, setValidationResults] = useState(null)
-    const [requirements, setRequirements] = useState(null)
-    const [design, setDesign] = useState(null)
-    const [development, setDevelopment] = useState(null)
-    const [testing, setTesting] = useState(null)
+    const [error, setError] = useState(null)
 
     useEffect(() => {
-        loadAllPhases()
-    }, [])
-
-    const loadAllPhases = () => {
-        const reqData = localStorage.getItem('sdlc_requirements')
-        const designData = localStorage.getItem('sdlc_design')
-        const devData = localStorage.getItem('sdlc_development')
-        const testData = localStorage.getItem('sdlc_testing')
-
-        setRequirements(reqData ? JSON.parse(reqData) : null)
-        setDesign(designData ? JSON.parse(designData) : null)
-        setDevelopment(devData ? JSON.parse(devData) : null)
-        setTesting(testData ? JSON.parse(testData) : null)
-
-        setTimeout(() => {
-            performValidation(
-                reqData ? JSON.parse(reqData) : null,
-                designData ? JSON.parse(designData) : null,
-                devData ? JSON.parse(devData) : null,
-                testData ? JSON.parse(testData) : null
-            )
-        }, 2000)
-    }
-
-    const performValidation = (req, des, dev, test) => {
-        const results = {
-            overallScore: 0,
-            totalChecks: 0,
-            passedChecks: 0,
-            sections: []
+        if (currentProject?._id) {
+            performBackendValidation()
         }
+    }, [currentProject])
 
-        // Phase Completion Check
-        const completionCheck = {
-            title: 'Phase Completion Status',
-            icon: '📊',
-            status: 'info',
-            checks: [
-                { name: 'Requirements Phase', passed: !!req, message: req ? 'Completed ✓' : 'Not completed ✗' },
-                { name: 'Design Phase', passed: !!des, message: des ? 'Completed ✓' : 'Not completed ✗' },
-                { name: 'Development Phase', passed: !!dev, message: dev ? 'Completed ✓' : 'Not completed ✗' },
-                { name: 'Testing Phase', passed: !!test, message: test ? 'Completed ✓' : 'Not completed ✗' }
-            ]
-        }
-        results.sections.push(completionCheck)
+    const performBackendValidation = async () => {
+        setIsValidating(true)
+        setError(null)
+        try {
+            const response = await apiService.validateConsistency(currentProject._id)
+            if (response.data && response.data.success) {
+                const report = response.data.report
 
-        // Requirements ↔ Design Validation
-        if (req && des) {
-            const reqDesignCheck = validateRequirementsDesign(req, des)
-            results.sections.push(reqDesignCheck)
-            results.totalChecks += reqDesignCheck.checks.length
-            results.passedChecks += reqDesignCheck.checks.filter(c => c.passed).length
-        }
-
-        // Design ↔ Development Validation
-        if (des && dev) {
-            const designDevCheck = validateDesignDevelopment(des, dev)
-            results.sections.push(designDevCheck)
-            results.totalChecks += designDevCheck.checks.length
-            results.passedChecks += designDevCheck.checks.filter(c => c.passed).length
-        }
-
-        // Requirements ↔ Testing Validation
-        if (req && test) {
-            const reqTestCheck = validateRequirementsTesting(req, test)
-            results.sections.push(reqTestCheck)
-            results.totalChecks += reqTestCheck.checks.length
-            results.passedChecks += reqTestCheck.checks.filter(c => c.passed).length
-        }
-
-        // Calculate overall score
-        if (results.totalChecks > 0) {
-            results.overallScore = Math.round((results.passedChecks / results.totalChecks) * 100)
-        }
-
-        // Generate improvement suggestions
-        results.suggestions = generateSuggestions(results, req, des, dev, test)
-
-        setValidationResults(results)
-        setIsValidating(false)
-    }
-
-    const validateRequirementsDesign = (req, des) => {
-        const checks = []
-
-        // Check if functional requirements are addressed in components
-        const frCount = req.functionalRequirements?.length || 0
-        const componentCount = des.components?.length || 0
-
-        checks.push({
-            name: 'Requirements Coverage in Design',
-            passed: componentCount >= Math.ceil(frCount / 2),
-            message: componentCount >= Math.ceil(frCount / 2)
-                ? `${componentCount} components defined for ${frCount} requirements ✓`
-                : `Only ${componentCount} components for ${frCount} requirements. Consider adding more components ✗`,
-            severity: componentCount >= Math.ceil(frCount / 2) ? 'success' : 'warning'
-        })
-
-        // Check if database schema exists
-        const hasDatabase = des.databaseSchema?.tables?.length > 0
-        checks.push({
-            name: 'Database Schema Defined',
-            passed: hasDatabase,
-            message: hasDatabase
-                ? `${des.databaseSchema.tables.length} database tables defined ✓`
-                : 'No database schema found. Add database design ✗',
-            severity: hasDatabase ? 'success' : 'error'
-        })
-
-        // Check if architecture is defined
-        const hasArchitecture = !!des.architecture?.type
-        checks.push({
-            name: 'Architecture Defined',
-            passed: hasArchitecture,
-            message: hasArchitecture
-                ? `${des.architecture.type} architecture selected ✓`
-                : 'Architecture type not defined ✗',
-            severity: hasArchitecture ? 'success' : 'error'
-        })
-
-        // Check if diagrams exist
-        const hasDiagrams = des.diagrams?.useCase && des.diagrams?.class && des.diagrams?.sequence
-        checks.push({
-            name: 'UML Diagrams Present',
-            passed: hasDiagrams,
-            message: hasDiagrams
-                ? 'All UML diagrams (Use Case, Class, Sequence) defined ✓'
-                : 'Some UML diagrams missing ✗',
-            severity: hasDiagrams ? 'success' : 'warning'
-        })
-
-        return {
-            title: 'Requirements ↔ Design Alignment',
-            icon: '🔗',
-            status: checks.every(c => c.passed) ? 'success' : checks.some(c => c.severity === 'error') ? 'error' : 'warning',
-            checks
-        }
-    }
-
-    const validateDesignDevelopment = (des, dev) => {
-        const checks = []
-
-        // Check if tech stack is defined
-        const hasTechStack = dev.techStack && Object.keys(dev.techStack).length > 0
-        checks.push({
-            name: 'Technology Stack Defined',
-            passed: hasTechStack,
-            message: hasTechStack
-                ? 'Complete tech stack recommendations provided ✓'
-                : 'Technology stack not defined ✗',
-            severity: hasTechStack ? 'success' : 'error'
-        })
-
-        // Check if code snippets exist
-        const hasCodeSnippets = dev.codeSnippets?.length > 0
-        checks.push({
-            name: 'Code Snippets Available',
-            passed: hasCodeSnippets,
-            message: hasCodeSnippets
-                ? `${dev.codeSnippets.length} code snippets provided ✓`
-                : 'No code snippets generated ✗',
-            severity: hasCodeSnippets ? 'success' : 'warning'
-        })
-
-        // Check if API contracts exist
-        const hasAPIContracts = dev.apiContracts?.length > 0
-        checks.push({
-            name: 'API Contracts Documented',
-            passed: hasAPIContracts,
-            message: hasAPIContracts
-                ? `${dev.apiContracts.length} API endpoints documented ✓`
-                : 'API contracts not defined ✗',
-            severity: hasAPIContracts ? 'success' : 'warning'
-        })
-
-        // Check if folder structure exists
-        const hasFolderStructure = dev.folderStructure?.length > 0
-        checks.push({
-            name: 'Project Structure Defined',
-            passed: hasFolderStructure,
-            message: hasFolderStructure
-                ? 'Complete folder structure provided ✓'
-                : 'Project structure not defined ✗',
-            severity: hasFolderStructure ? 'success' : 'error'
-        })
-
-        // Check alignment with design components
-        const designComponents = des.components?.length || 0
-        const apiEndpoints = dev.apiContracts?.length || 0
-        const hasAlignment = apiEndpoints >= Math.ceil(designComponents / 2)
-
-        checks.push({
-            name: 'Design-Development Alignment',
-            passed: hasAlignment,
-            message: hasAlignment
-                ? `${apiEndpoints} API endpoints for ${designComponents} components ✓`
-                : `Only ${apiEndpoints} endpoints for ${designComponents} components. Add more APIs ✗`,
-            severity: hasAlignment ? 'success' : 'warning'
-        })
-
-        return {
-            title: 'Design ↔ Development Alignment',
-            icon: '🔗',
-            status: checks.every(c => c.passed) ? 'success' : checks.some(c => c.severity === 'error') ? 'error' : 'warning',
-            checks
-        }
-    }
-
-    const validateRequirementsTesting = (req, test) => {
-        const checks = []
-
-        // Check if test cases exist
-        const hasTestCases = test.testCases?.length > 0
-        checks.push({
-            name: 'Test Cases Generated',
-            passed: hasTestCases,
-            message: hasTestCases
-                ? `${test.testCases.length} test cases created ✓`
-                : 'No test cases found ✗',
-            severity: hasTestCases ? 'success' : 'error'
-        })
-
-        // Check requirements coverage
-        const frCount = req.functionalRequirements?.length || 0
-        const tcCount = test.testCases?.length || 0
-        const hasCoverage = tcCount >= frCount
-
-        checks.push({
-            name: 'Requirements Test Coverage',
-            passed: hasCoverage,
-            message: hasCoverage
-                ? `${tcCount} test cases for ${frCount} requirements (${Math.round((tcCount / frCount) * 100)}% coverage) ✓`
-                : `Only ${tcCount} test cases for ${frCount} requirements (${Math.round((tcCount / frCount) * 100)}% coverage). Add more tests ✗`,
-            severity: hasCoverage ? 'success' : 'warning'
-        })
-
-        // Check if test strategy exists
-        const hasStrategy = test.testStrategy && Object.keys(test.testStrategy).length > 0
-        checks.push({
-            name: 'Test Strategy Defined',
-            passed: hasStrategy,
-            message: hasStrategy
-                ? 'Comprehensive test strategy documented ✓'
-                : 'Test strategy not defined ✗',
-            severity: hasStrategy ? 'success' : 'error'
-        })
-
-        // Check if edge cases are covered
-        const hasEdgeCases = test.edgeCases?.length > 0
-        checks.push({
-            name: 'Edge Cases Identified',
-            passed: hasEdgeCases,
-            message: hasEdgeCases
-                ? `${test.edgeCases.length} edge cases documented ✓`
-                : 'No edge cases identified ✗',
-            severity: hasEdgeCases ? 'success' : 'warning'
-        })
-
-        // Check if integration tests exist
-        const hasIntegrationTests = test.integrationTests?.length > 0
-        checks.push({
-            name: 'Integration Tests Defined',
-            passed: hasIntegrationTests,
-            message: hasIntegrationTests
-                ? `${test.integrationTests.length} integration tests planned ✓`
-                : 'No integration tests defined ✗',
-            severity: hasIntegrationTests ? 'success' : 'warning'
-        })
-
-        // Check traceability matrix
-        const hasTraceability = test.traceabilityMatrix?.length > 0
-        checks.push({
-            name: 'Requirements Traceability',
-            passed: hasTraceability,
-            message: hasTraceability
-                ? 'Requirements traceability matrix exists ✓'
-                : 'Traceability matrix missing ✗',
-            severity: hasTraceability ? 'success' : 'error'
-        })
-
-        return {
-            title: 'Requirements ↔ Testing Alignment',
-            icon: '🔗',
-            status: checks.every(c => c.passed) ? 'success' : checks.some(c => c.severity === 'error') ? 'error' : 'warning',
-            checks
-        }
-    }
-
-    const generateSuggestions = (results, req, des, dev, test) => {
-        const suggestions = []
-
-        // Missing phases
-        if (!req) suggestions.push({
-            priority: 'high',
-            category: 'Missing Phase',
-            title: 'Complete Requirements Phase',
-            description: 'Start by defining your project requirements. This is the foundation of your SDLC.',
-            action: 'Go to Requirements Analysis'
-        })
-
-        if (!des && req) suggestions.push({
-            priority: 'high',
-            category: 'Missing Phase',
-            title: 'Complete Design Phase',
-            description: 'Transform your requirements into system architecture and design.',
-            action: 'Go to System Design'
-        })
-
-        if (!dev && des) suggestions.push({
-            priority: 'medium',
-            category: 'Missing Phase',
-            title: 'Complete Development Phase',
-            description: 'Get development guidance, code snippets, and best practices.',
-            action: 'Go to Development'
-        })
-
-        if (!test && req) suggestions.push({
-            priority: 'high',
-            category: 'Missing Phase',
-            title: 'Complete Testing Phase',
-            description: 'Create test cases to ensure quality and requirement coverage.',
-            action: 'Go to Testing & QA'
-        })
-
-        // Specific improvements based on validation results
-        results.sections.forEach(section => {
-            section.checks?.forEach(check => {
-                if (!check.passed) {
-                    if (check.severity === 'error') {
-                        suggestions.push({
-                            priority: 'high',
-                            category: section.title,
-                            title: `Fix: ${check.name}`,
-                            description: check.message,
-                            action: 'Review and update the respective phase'
-                        })
-                    } else if (check.severity === 'warning') {
-                        suggestions.push({
-                            priority: 'medium',
-                            category: section.title,
-                            title: `Improve: ${check.name}`,
-                            description: check.message,
-                            action: 'Consider enhancing this area'
-                        })
-                    }
+                // Map backend report to the expected UI results structure
+                const results = {
+                    overallScore: parseInt(report.overall_completion) || 0,
+                    totalChecks: Object.keys(report.module_progress).length,
+                    passedChecks: Object.values(report.module_progress).filter(v => v === 'generated').length,
+                    sections: [],
+                    suggestions: report.suggestions.map(s => ({
+                        priority: 'medium',
+                        category: 'SDLC Recommendation',
+                        title: s,
+                        description: 'Consistency check based on actual project artifacts.',
+                        action: 'Update phase outputs'
+                    }))
                 }
-            })
-        })
 
-        // General best practices
-        if (results.overallScore < 70) {
-            suggestions.push({
-                priority: 'high',
-                category: 'Quality',
-                title: 'Improve Overall Consistency',
-                description: `Your consistency score is ${results.overallScore}%. Aim for at least 80% for production-ready quality.`,
-                action: 'Address high-priority issues first'
-            })
+                // Construct Phase Completion Section
+                results.sections.push({
+                    title: 'Phase Completion Status',
+                    icon: '📊',
+                    status: report.consistency_status === 'valid' ? 'success' : 'warning',
+                    checks: [
+                        { name: 'Requirements Phase', passed: report.phase_progress.requirements === 'completed', message: report.phase_progress.requirements.split('_').join(' ') },
+                        { name: 'Design Phase', passed: report.phase_progress.design === 'completed', message: report.phase_progress.design.split('_').join(' ') },
+                        { name: 'Development Phase', passed: report.phase_progress.development === 'completed', message: report.phase_progress.development.split('_').join(' ') },
+                        { name: 'Testing Phase', passed: report.phase_progress.testing === 'completed', message: report.phase_progress.testing.split('_').join(' ') }
+                    ]
+                })
+
+                // Construct Module Alignment Section
+                results.sections.push({
+                    title: 'Component Alignment',
+                    icon: '🔗',
+                    status: report.consistency_status === 'valid' ? 'success' : 'warning',
+                    checks: Object.entries(report.module_progress).map(([key, value]) => ({
+                        name: key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+                        passed: value === 'generated',
+                        message: value === 'generated' ? 'Artifact Validated ✓' : 'Artifact Missing ✗',
+                        severity: value === 'generated' ? 'success' : 'warning'
+                    }))
+                })
+
+                setValidationResults(results)
+            } else {
+                throw new Error('Failed to validate project consistency')
+            }
+        } catch (err) {
+            console.error('Validation failed:', err)
+            setError(err.message)
+        } finally {
+            setIsValidating(false)
         }
-
-        return suggestions.sort((a, b) => {
-            const priorityOrder = { high: 0, medium: 1, low: 2 }
-            return priorityOrder[a.priority] - priorityOrder[b.priority]
-        })
     }
 
     const exportReport = () => {
-        const report = {
-            validationDate: new Date().toISOString(),
-            overallScore: validationResults.overallScore,
-            summary: {
-                totalChecks: validationResults.totalChecks,
-                passedChecks: validationResults.passedChecks,
-                failedChecks: validationResults.totalChecks - validationResults.passedChecks
-            },
-            sections: validationResults.sections,
-            suggestions: validationResults.suggestions
-        }
-
-        const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' })
+        if (!validationResults) return
+        const blob = new Blob([JSON.stringify(validationResults, null, 2)], { type: 'application/json' })
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = 'sdlc-consistency-report.json'
+        a.download = `consistency-report-${currentProject?.name || 'project'}.json`
         a.click()
     }
 
@@ -403,7 +92,24 @@ function ConsistencyValidator({ onClose }) {
                     <div className="validator-loading">
                         <div className="loading-spinner-large"></div>
                         <h3>Validating SDLC Consistency...</h3>
-                        <p>Analyzing alignment between all phases</p>
+                        <p>Scanning all phase outputs for project alignment</p>
+                    </div>
+                </div>
+            </div>
+        )
+    }
+
+    if (error) {
+        return (
+            <div className="validator-overlay">
+                <div className="validator-container">
+                    <div className="validator-header">
+                        <h2>Validation Error</h2>
+                        <button className="close-validator" onClick={onClose}>×</button>
+                    </div>
+                    <div className="validator-content centered-state">
+                        <p className="error-message">{error}</p>
+                        <button className="btn-primary" onClick={performBackendValidation}>Retry Validation</button>
                     </div>
                 </div>
             </div>
@@ -416,7 +122,7 @@ function ConsistencyValidator({ onClose }) {
                 <div className="validator-header">
                     <div>
                         <h2>🔍 SDLC Consistency Validation Report</h2>
-                        <p>Comprehensive analysis of phase alignment and completeness</p>
+                        <p>Comprehensive analysis for <strong>{currentProject?.name}</strong></p>
                     </div>
                     <button className="close-validator" onClick={onClose}>
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -436,7 +142,7 @@ function ConsistencyValidator({ onClose }) {
                                     cy="80"
                                     r="70"
                                     fill="none"
-                                    stroke={validationResults.overallScore >= 80 ? '#22c55e' : validationResults.overallScore >= 60 ? '#f59e0b' : '#ef4444'}
+                                    stroke={validationResults.overallScore >= 80 ? '#22c55e' : validationResults.overallScore >= 50 ? '#f59e0b' : '#ef4444'}
                                     strokeWidth="12"
                                     strokeDasharray={`${(validationResults.overallScore / 100) * 440} 440`}
                                     strokeLinecap="round"
@@ -445,21 +151,17 @@ function ConsistencyValidator({ onClose }) {
                             </svg>
                             <div className="score-text">
                                 <div className="score-number">{validationResults.overallScore}%</div>
-                                <div className="score-label">Consistency Score</div>
+                                <div className="score-label">Project Progress</div>
                             </div>
                         </div>
                         <div className="score-stats">
                             <div className="stat-item">
                                 <div className="stat-value">{validationResults.passedChecks}</div>
-                                <div className="stat-label">Passed</div>
+                                <div className="stat-label">Modules Ready</div>
                             </div>
                             <div className="stat-item">
                                 <div className="stat-value">{validationResults.totalChecks - validationResults.passedChecks}</div>
-                                <div className="stat-label">Failed</div>
-                            </div>
-                            <div className="stat-item">
-                                <div className="stat-value">{validationResults.totalChecks}</div>
-                                <div className="stat-label">Total Checks</div>
+                                <div className="stat-label">Pending Items</div>
                             </div>
                         </div>
                     </div>
@@ -472,9 +174,7 @@ function ConsistencyValidator({ onClose }) {
                                     <span className="section-icon">{section.icon}</span>
                                     <h4>{section.title}</h4>
                                     <span className={`section-badge badge-${section.status}`}>
-                                        {section.status === 'success' ? '✓ Passed' :
-                                            section.status === 'error' ? '✗ Failed' :
-                                                section.status === 'warning' ? '⚠ Warning' : 'ℹ Info'}
+                                        {section.status === 'success' ? '✓ Valid' : '⚠ Action Required'}
                                     </span>
                                 </div>
                                 <div className="section-checks">
