@@ -38,21 +38,31 @@ class VibeCodingService {
     }
 
     async generateProject(userPrompt, projectContext = '') {
-        const prompt = `Generate a COMPLETE project for: "${userPrompt}"
-${projectContext ? `\nContext: ${projectContext}` : ''}
+        const prompt = `Task: Generate a FULL-STACK, HIGH-FIDELITY code repository for: "${userPrompt}"
+${projectContext ? `\nProject Context (Vision): ${projectContext}` : ''}
 
-Respond ONLY with this JSON structure:
+Respond with a JSON object containing a professional file list.
+Structure:
 {
   "files": [
-    {"path": "src/index.js", "code": "..."}
+    {"path": "README.md", "code": "# ..."},
+    {"path": "frontend/package.json", "code": "{...}"},
+    {"path": "backend/package.json", "code": "{...}"}
   ],
-  "summary": "Brief summary"
+  "summary": "Project overview"
 }
 
-RULES:
-1. Return 10-15 files maximum.
-2. Ensure paths are clear (e.g. "backend/server.js").
-3. NO placeholders.`;
+STRICT PROFESSIONAL RULES:
+1. MANDATORY README.md: This must be the VERY FIRST file. It must serve as the central hub for the OVERALL project, containing a clear "HOW TO RUN" section with separate terminal commands for 'frontend' and 'backend'.
+2. HIGH-FIDELITY FRONTEND: Concentrate heavily on the Frontend (React/CSS). It must be visually stunning, interactive, and modern (comparable to Claude/Lovable UI generation). Include components (Header, Footer, Feature cards, Dashboard, etc.) and deep CSS styling (animations, gradients, glassmorphism).
+3. BACKEND BOILERPLATE: Provide a professional Backend structure. This should include project-specific routing, authentication logic, middleware, and database (MongoDB/SQL) placeholders. Focus on being a functional, clean boilerplate that handles the project's logic.
+4. NO IMAGES: Do NOT use any <img> tags or image/icon assets. Use CSS gradients, styled divs, or text-based placeholders for visuals.
+5. FOLDER SEPARATION: Clearly separate into 'frontend/' and 'backend/' folders within the root.
+6. NO PLACEHOLDERS: All code (both layers) must be fully implemented, modular, and runnable. No "// TODO" or "// Implement later".
+7. VOLUME: Return 25-30 files to ensure a deep, professional full-stack implementation.
+8. NO MARKDOWN WRAPPERS: Respond ONLY with the JSON object.
+
+Generate the full project JSON now:`;
 
         const result = await mistralService.generateJSON(prompt);
         result.structure = this.buildStructureFromFiles(result.files);

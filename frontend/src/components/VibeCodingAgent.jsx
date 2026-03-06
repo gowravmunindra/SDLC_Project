@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useProject } from '../contexts/ProjectContext'
 import apiService from '../services/apiService'
 import JSZip from 'jszip'
@@ -149,33 +149,78 @@ function VibeCodingAgent({ onClose, onComplete }) {
         saveAs(content, `${currentProject?.name || 'project'}-vibe-code.zip`)
     }
 
-    const handleGenerate = async () => {
-        const prompt = userPrompt.trim()
+    // ─── Dynamic Predefined Prompts ──────────────────────────────────────────────
+    const PREDEFINED_PROMPTS = useMemo(() => {
+        const title = currentProject?.name || 'My Project';
+        const rawDesc = currentProject?.description || 'a professional application';
+        const descSnippet = rawDesc.length > 80 ? rawDesc.substring(0, 77) + '...' : rawDesc;
+
+        return [
+            {
+                icon: '🚀',
+                label: 'Full Project Logic',
+                prompt: `Generate the full functional logic for "${title}" as described: ${rawDesc}. Ensure professional clean code.`
+            },
+            {
+                icon: '💎',
+                label: 'Professional UI/UX',
+                prompt: `Focus on the UI components and modern styling for "${title}". Visual vision: ${descSnippet}`
+            },
+            {
+                icon: '🛠️',
+                label: 'Modular MVP',
+                prompt: `Build a modular MVP for "${title}" with essential features: ${descSnippet}. Keep it clean and scalable.`
+            },
+            {
+                icon: '📝',
+                label: 'Complete Repository',
+                prompt: `Initialize "${title}" as a professional GitHub repository with a detailed README.md, .env, and structure.`
+            }
+        ];
+    }, [currentProject]);
+
+    const handleGenerate = async (quickPrompt = null) => {
+        const prompt = (quickPrompt || userPrompt).trim()
         if (!prompt || isGenerating) return
 
-        setUserPrompt('')
-        setChatMessages(prev => [...prev, { type: 'user', text: prompt }])
+        if (!quickPrompt) setUserPrompt('')
+
+        // FORCE FRESH BUILD for predefined prompts or if no files yet
+        const isFreshBuild = quickPrompt !== null || files.length === 0;
+
+        if (isFreshBuild) {
+            setFiles([]);
+            setStructure(null);
+            setSelectedFile(null);
+            setOpenTabs([]);
+            setChatMessages([{ type: 'user', text: quickPrompt ? `🚀 New Full-Stack Build: ${quickPrompt}` : prompt }]);
+        } else {
+            setChatMessages(prev => [...prev, { type: 'user', text: prompt }]);
+        }
+
         setIsGenerating(true)
-        setCountdown(30)
+        setCountdown(45)
 
         try {
             const payload = {
                 projectId: currentProject?._id || 'standalone',
                 userPrompt: prompt,
-                currentFiles: files
+                currentFiles: isFreshBuild ? [] : files
             }
 
-            const res = structure
-                ? await apiService.vibeUpdate(payload)
-                : await apiService.vibeGenerate(payload);
+            const res = isFreshBuild
+                ? await apiService.vibeGenerate(payload)
+                : await apiService.vibeUpdate(payload);
 
             if (res.data.success) {
                 setStructure(res.data.structure)
                 setFiles(res.data.files)
 
-                if (!selectedFile && res.data.files.length > 0) {
-                    setSelectedFile(res.data.files[0])
-                    setOpenTabs([res.data.files[0]])
+                if (res.data.files.length > 0) {
+                    const readme = res.data.files.find(f => f.path.toLowerCase().includes('readme.md'));
+                    const defaultFile = readme || res.data.files[0];
+                    setSelectedFile(defaultFile)
+                    setOpenTabs([defaultFile])
                 }
 
                 setChatMessages(prev => [...prev, { type: 'bot', text: res.data.summary }])
@@ -320,8 +365,29 @@ function VibeCodingAgent({ onClose, onComplete }) {
                             </div>
                         ) : (
                             <div className="editor-welcome">
+                                <span className="welcome-logo">⚡</span>
                                 <h2>Vibe Coding Tool</h2>
-                                <p>Ready to build? Type a prompt in the AI Assistant panel.</p>
+                                <p>Generate a complete professional project in seconds.</p>
+
+                                <div className="welcome-examples" style={{ marginTop: 40, width: '100%', maxWidth: 500 }}>
+                                    <div className="examples-label">✨ Single-Click Generation:</div>
+                                    <div className="quick-prompt-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                                        {PREDEFINED_PROMPTS.map(p => (
+                                            <button
+                                                key={p.label}
+                                                className="example-prompt"
+                                                onClick={() => handleGenerate(p.prompt)}
+                                                disabled={isGenerating}
+                                            >
+                                                <span style={{ fontSize: 18 }}>{p.icon}</span>
+                                                <div style={{ textAlign: 'left' }}>
+                                                    <div style={{ fontWeight: 600, color: 'white' }}>{p.label}</div>
+                                                    <div style={{ fontSize: 10, opacity: 0.6 }}>Create from template</div>
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
                             </div>
                         )}
                     </div>
@@ -336,26 +402,66 @@ function VibeCodingAgent({ onClose, onComplete }) {
                         {chatMessages.map((msg, i) => (
                             <div key={i} className={`chat-bubble ${msg.type}`}>
                                 <div className="bubble-text">{msg.text}</div>
+                                {i === 0 && msg.type === 'bot' && files.length === 0 && (
+                                    <div className="mini-prompt-list" style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                        {PREDEFINED_PROMPTS.map(p => (
+                                            <button
+                                                key={p.label}
+                                                className="mini-prompt-btn"
+                                                onClick={() => handleGenerate(p.prompt)}
+                                                disabled={isGenerating}
+                                                style={{
+                                                    background: 'rgba(0, 122, 204, 0.15)',
+                                                    border: '1px solid rgba(0, 122, 204, 0.3)',
+                                                    color: '#9cdcfe',
+                                                    padding: '6px 10px',
+                                                    borderRadius: '4px',
+                                                    fontSize: '11px',
+                                                    textAlign: 'left',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                {p.icon} {p.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         ))}
                         {isGenerating && (
                             <div className="chat-bubble bot">
-                                <div className="bubble-text">Thinking... {countdown > 0 && `(${countdown}s)`}</div>
+                                <div className="bubble-text">
+                                    <div className="coding-animation">
+                                        <span>Designing project architecture...</span>
+                                        <div className="typing-dots"><span>.</span><span>.</span><span>.</span></div>
+                                    </div>
+                                </div>
                             </div>
                         )}
                         <div ref={chatEndRef} />
                     </div>
 
                     <div className="ai-input-area">
-                        <textarea
-                            className="ai-textarea"
-                            placeholder="Describe changes..."
-                            value={userPrompt}
-                            onChange={e => setUserPrompt(e.target.value)}
-                            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleGenerate())}
-                            disabled={isGenerating}
-                        />
-                        <button className="send-button" onClick={handleGenerate} disabled={isGenerating}>Send</button>
+                        <div className={`ai-input-wrapper ${isGenerating ? 'disabled' : ''}`}>
+                            <textarea
+                                className="ai-textarea"
+                                placeholder="Describe changes or click a template above..."
+                                value={userPrompt}
+                                onChange={e => setUserPrompt(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleGenerate())}
+                                disabled={isGenerating}
+                            />
+                            <div className="ai-input-footer">
+                                <div className="input-hint">Shift + Enter for new line</div>
+                                <button
+                                    className="send-button"
+                                    onClick={() => handleGenerate()}
+                                    disabled={isGenerating || !userPrompt.trim()}
+                                >
+                                    {isGenerating ? <div className="btn-spinner"></div> : 'Send'}
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

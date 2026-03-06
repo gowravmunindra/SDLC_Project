@@ -759,6 +759,34 @@
     color: #fff;
 }
 
+.quick-prompt-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-top: 20px;
+}
+
+.mini-prompt-btn {
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mini-prompt-btn:hover:not(:disabled) {
+    background: rgba(0, 122, 204, 0.3) !important;
+    border-color: rgba(0, 122, 204, 0.6) !important;
+    transform: translateX(4px);
+}
+
+.coding-animation {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    color: #4ec9b0;
+    font-weight: 600;
+}
+
 /* ── Status Bar ────────────────────────────────────────────────────────────── */
 .status-bar {
     height: 24px;

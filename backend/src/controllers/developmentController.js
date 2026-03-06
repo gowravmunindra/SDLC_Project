@@ -77,33 +77,39 @@ Output Format: Provide ONLY a JSON object.
 // Generate Folder Structure
 const generateStructure = async (req, res) => {
   try {
-    const { projectId, techStack, generateType } = req.body; // generateType: Frontend, Backend, Both
+    const { projectId, techStack, generateType, isRegenerating } = req.body;
     const project = await Project.findById(projectId);
     if (!project) return res.status(404).json({ message: 'Project not found' });
 
-    const diagramSummary = getDiagramSummary(project.design?.diagrams);
+    // Detect if we should ignore previous phase outputs
+    const usePreviousData = !isRegenerating && project.design?.diagrams;
+    const diagramSummary = usePreviousData ? getDiagramSummary(project.design?.diagrams) : 'NOT AVAILABLE (Generate based on Project Title/Description only)';
 
-    const prompt = `Task: Generate a comprehensive, professional-grade project structure for a ${generateType} application.
-Tech Stack: 
-- Frontend: ${techStack.frontend}
-- Backend: ${techStack.backend}
-- Database: ${techStack.database}
+    const prompt = `Task: Generate a COMPREHENSIVE, PRODUCTION-READY project structure for a ${generateType} application.
 
-Reference Design Diagrams:
+PROJECT CONTEXT:
+- Title: ${project.name}
+- Vision: ${project.description}
+- Tech Stack: ${techStack.frontend}, ${techStack.backend}, ${techStack.database}
+
+DEVELOPMENT GUIDELINES (Predefined Generation Prompts):
+1. INDEPENDENCE: If design diagrams are marked as NOT AVAILABLE, interpret the project title/description to create a professional, logical architecture from scratch.
+2. MANDATORY COMPONENTS: Every generated structure MUST include:
+   - UI STYLING: CSS/SCSS files and layout components for a visually professional interface.
+   - CORE LOGIC: Dedicated files/services to handle main application behavior (e.g. controllers, services).
+   - ENTRY POINT: A clear starting file (index.js, main.jsx, or server.js).
+    - DOCUMENTATION: A mandatory "README.md" file for the OVERALL project. This file must serve as the primary documentation hub, clearly summarizing the entire vision, project structure, setup, dependencies, run instructions, and troubleshooting guides for the whole application.
+3. MODULARITY: Separate concerns into folders like 'components', 'styles', 'logic', 'routes', 'models'.
+4. AUTH & DB PLACEHOLDERS: Provide clear, non-hardcoded slots for authentication and database connections.
+5. VOLUME: 20-30 files across logical folders.
+
+REFERENCE DESIGN (IF AVAILABLE):
 ${diagramSummary}
 
-CRITICAL RULES FOR STRUCTURE GENERATION:
-1. ONLY output folders and file names in the specified JSON format.
-2. Do NOT generate any code, content, or explanations inside the 'description' fields.
-3. Every folder created (e.g., controllers, components) MUST contain relevant files.
-4. Total files: 20-25. 
-5. Separate 'frontend' and 'backend' if 'Both' is selected.
-6. The 'description' field in JSON should only be a brief 1-line summary of the file's purpose (e.g. "User authentication controller").
-
-Output Format:
+Output ONLY the JSON structure:
 {
   "structure": {
-    "name": "root",
+    "name": "${project.name.toLowerCase().replace(/\s+/g, '-')}",
     "type": "folder",
     "children": [ ... ]
   }
@@ -119,31 +125,47 @@ Output Format:
 // Generate Code for a File
 const generateCode = async (req, res) => {
   try {
-    const { projectId, filePath, fileDescription, techStack, codeType, diagrams, fullStructure } = req.body;
-    const diagramSummary = getDiagramSummary(diagrams);
+    const { projectId, filePath, fileDescription, techStack, codeType, diagrams, fullStructure, isRegenerating } = req.body;
 
-    const prompt = `Task: Generate HIGH-QUALITY, PRODUCTION-READY source code for a specific file.
-Target File: ${filePath}
-Purpose: ${fileDescription}
-Tech Stack: Frontend(${techStack?.frontend}), Backend(${techStack?.backend}), Database(${techStack?.database})
+    // Respect regeneration flag by ignoring diagram context if needed
+    const usePreviousData = !isRegenerating && diagrams;
+    const diagramSummary = usePreviousData ? getDiagramSummary(diagrams) : 'NOT AVAILABLE';
 
-CONFIRMED PROJECT STRUCTURE (Reference for Relative Imports):
+    let specificRules = "";
+    if (filePath.toLowerCase().endsWith('readme.md')) {
+      specificRules = `
+MANDATORY README SECTIONS:
+1. Project Overview (Interpretation of ${fileDescription}).
+2. Folder Structure (Tree view based on ${JSON.stringify(fullStructure.name)}).
+3. Setup Instructions (Step-by-step local configuration).
+4. Dependency Installation (Required npm/pip commands).
+5. Run Commands (How to start the app).
+6. Troubleshooting (Help for missing dependencies or config issues).
+`;
+    } else if (filePath.toLowerCase().includes('style') || filePath.toLowerCase().endsWith('.css') || filePath.toLowerCase().endsWith('.scss')) {
+      specificRules = "MODERN STYLING RULES: Focus on a premium, visually understandable UI. Use Flexbox/Grid, professional color palettes, and structured layouts.";
+    } else if (filePath.toLowerCase().includes('logic') || filePath.toLowerCase().includes('controller') || filePath.toLowerCase().includes('service')) {
+      specificRules = "CORE LOGIC RULES: Implement the main behavior described in the project vision. Connect UI interactions to functionality. Keep code modular and scalable.";
+    }
+
+    const prompt = `Task: Generate PRODUCTION-LEVEL source code for: ${filePath}
+Project: ${fileDescription}
+Tech Stack: ${techStack?.frontend || 'React'}, ${techStack?.backend || 'Node'}, ${techStack?.database || 'None'}
+
+PROJECT ARCHITECTURE:
 ${JSON.stringify(fullStructure, null, 2)}
 
 STRICT GENERATION RULES:
-1. FULL IMPLEMENTATION: Do NOT use placeholders, // TODOs, or empty functions. Every file MUST be fully functional and ready to run.
-2. NO ESCAPING: Do NOT output "Intentionally left empty". You must provide a professional implementation regardless of the file type.
-3. FILE TYPE COMPLIANCE: 
-   - If .css: Provide modern, comprehensive CSS styles. Use variables, flexbox/grid, and professional design patterns.
-   - If .jsx/.js (Frontend): Use React/ES6. Implement robust components with hooks, state management, and clear UI. Use relative imports strictly matching the structure.
-   - If .js (Backend): Implement deep logic for controllers/models using ${techStack?.backend}. Include error handling and proper status codes.
-   - If .json: Provide a complete valid JSON configuration.
-4. IMPORT INTEGRITY: Every import statement MUST match a real path found in the CONFIRMED PROJECT STRUCTURE.
-5. CODE ONLY: Output ONLY the source code content. No markdown, no explanations, no text before/after the code.
-6. DESIGN ALIGNMENT: Strictly align with the architectural patterns and names defined in these diagrams:
+1. NO PLACEHOLDERS: Implement the file FULLY. No "// TODO" or "// Logic here".
+2. SEPARATION OF CONCERNS: Keep UI Styling and Core Logic strictly separated.
+3. ERROR HANDLING: Include professional try/catch blocks and user-friendly logging.
+4. INDEPENDENT INTERPRETATION: Use the file path and project context to infer perfect implementation if diagrams are NOT AVAILABLE.
+${specificRules}
+
+REFERENCE LOGIC (IF AVAILABLE):
 ${diagramSummary}
 
-Output the complete, perfect source code now:`;
+Output the complete source code for ${filePath} now:`;
 
     const code = await mistralService.generate(prompt);
     res.json({ success: true, filePath, code });

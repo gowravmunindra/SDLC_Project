@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useProject } from '../contexts/ProjectContext'
 import apiService from '../services/apiService'
 import './DevelopmentAgent.css'
+import JSZip from 'jszip'
+import { saveAs } from 'file-saver'
 
 function DevelopmentAgent({ onClose, onComplete }) {
     const { currentProject, updateProject, refreshCurrentProject } = useProject()
@@ -19,6 +21,7 @@ function DevelopmentAgent({ onClose, onComplete }) {
     const [structure, setStructure] = useState(null)
     const [isStructureConfirmed, setIsStructureConfirmed] = useState(false)
     const [generateType, setGenerateType] = useState('Both') // Frontend, Backend, Both
+    const [isRegenerating, setIsRegenerating] = useState(false)
 
     const [selectedNode, setSelectedNode] = useState(null)
     const [codeFiles, setCodeFiles] = useState([]) // [{ path, desc, code, status: 'pending'|'generating'|'done' }]
@@ -96,9 +99,10 @@ function DevelopmentAgent({ onClose, onComplete }) {
         return required.every(key => diagramsCheck[key])
     }
 
-    const startTechStackPhase = () => {
-        if (!isAllDiagramsReady()) return
-        if (window.confirm("Confirm that all design diagrams are finalized and approved?")) {
+    const startTechStackPhase = (forceFresh = false) => {
+        if (!forceFresh && !isAllDiagramsReady()) return
+        if (forceFresh || window.confirm("Confirm that all design diagrams are finalized and approved?")) {
+            if (forceFresh) setIsRegenerating(true)
             setStep('techstack')
             generateTechStack()
         }
@@ -131,7 +135,7 @@ function DevelopmentAgent({ onClose, onComplete }) {
         setLoading(true)
         setLoadingMessage(`Generating ${generateType} Structure...`)
         try {
-            const res = await apiService.generateStructure(currentProject._id, selectedStack, generateType)
+            const res = await apiService.generateStructure(currentProject._id, selectedStack, generateType, isRegenerating)
             if (res.data.success) {
                 setStructure(res.data.data.structure)
             }
@@ -164,7 +168,9 @@ function DevelopmentAgent({ onClose, onComplete }) {
         traverse(structure)
 
         // Match existing code/status for files that haven't changed path
+        // IF REGENERATING: Ignore old code to force fresh generation
         const mergedFiles = files.map(newF => {
+            if (isRegenerating) return newF;
             const existing = codeFiles.find(oldF => oldF.path === newF.path)
             return existing ? { ...newF, code: existing.code, status: existing.status } : newF
         })
@@ -296,7 +302,8 @@ function DevelopmentAgent({ onClose, onComplete }) {
                     selectedStack,
                     selectedCodeType,
                     currentProject.design.diagrams,
-                    structure // Pass the confirmed structure here
+                    structure, // Pass the confirmed structure here
+                    isRegenerating // REGENERATION FLAG
                 )
 
                 if (res.data.success) {
@@ -324,6 +331,22 @@ function DevelopmentAgent({ onClose, onComplete }) {
             setCodeFiles([...updatedFiles])
         }
         setIsCodeGenerating(false)
+    }
+
+    const handleDownloadZip = async () => {
+        const completedFiles = codeFiles.filter(f => f.code && f.code.length > 0);
+        if (completedFiles.length === 0) {
+            alert("No source code generated yet. Please generate files before downloading.");
+            return;
+        }
+
+        const zip = new JSZip();
+        completedFiles.forEach(file => {
+            zip.file(file.path, file.code);
+        });
+
+        const content = await zip.generateAsync({ type: 'blob' });
+        saveAs(content, `${currentProject?.name?.toLowerCase().replace(/\s+/g, '-') || 'project'}-repository.zip`);
     }
 
     const finalizeDevelopment = async (shouldComplete = true) => {
@@ -378,19 +401,32 @@ function DevelopmentAgent({ onClose, onComplete }) {
                 </div>
             )}
 
-            <div style={{ marginTop: 32, display: 'flex', gap: 16 }}>
-                <button className="dev-btn dev-btn-secondary" onClick={onClose}>Go Back to Design</button>
-                <button
-                    className="dev-btn dev-btn-primary"
-                    disabled={!isAllDiagramsReady() || !apiKeyStatus.valid}
-                    onClick={startTechStackPhase}
-                >
-                    Yes, Proceed to Development
-                </button>
+            <div style={{ marginTop: 32, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex', gap: 16 }}>
+                    <button className="dev-btn dev-btn-secondary" onClick={onClose}>Go Back to Design</button>
+                    <button
+                        className="dev-btn dev-btn-primary"
+                        disabled={!isAllDiagramsReady() || !apiKeyStatus.valid}
+                        onClick={() => startTechStackPhase(false)}
+                    >
+                        Yes, Proceed to Development
+                    </button>
+                </div>
+
+                {!isAllDiagramsReady() && apiKeyStatus.valid && (
+                    <button
+                        className="dev-btn dev-btn-secondary"
+                        style={{ background: 'rgba(255, 255, 255, 0.05)', color: 'var(--dev-primary)', border: '1px dashed var(--dev-primary)' }}
+                        onClick={() => startTechStackPhase(true)}
+                    >
+                        ⚡ Interpret from Project Title & Description (No Design Data)
+                    </button>
+                )}
             </div>
+
             {!isAllDiagramsReady() && (
-                <p style={{ color: '#ff453a', fontSize: 13, marginTop: 12 }}>
-                    * Development phase cannot begin. Please complete all required design diagrams.
+                <p style={{ color: 'var(--dev-text-dim)', fontSize: 13, marginTop: 12 }}>
+                    * Suggestion: If diagrams are missing, you can use the <strong>Interpret</strong> option above to generate a professional project based purely on your initial vision.
                 </p>
             )}
         </div>
@@ -400,7 +436,7 @@ function DevelopmentAgent({ onClose, onComplete }) {
         <div className="step-content">
             <div className="step-header">
                 <h3>Select Technology Stack</h3>
-                <p>Choose the foundation for your application generation.</p>
+                <p>{isRegenerating ? "Regenerating fresh stack for new implementation..." : "Choose the foundation for your application generation."}</p>
             </div>
 
             {techStackOptions.length === 0 ? (
@@ -439,7 +475,7 @@ function DevelopmentAgent({ onClose, onComplete }) {
         <div className="step-content">
             <div className="step-header">
                 <h3>Project Structure</h3>
-                <p>Define the folder and file hierarchy for the codebase.</p>
+                <p>{isRegenerating ? "Generating fresh independently-reasoned structure..." : "Define the folder and file hierarchy for the codebase."}</p>
             </div>
 
             {!structure ? (
@@ -460,12 +496,12 @@ function DevelopmentAgent({ onClose, onComplete }) {
                 </div>
             ) : (
                 <div className="structure-container">
-                    <div className="structure-tree">
-                        <div className="tree-header" style={{ marginBottom: 12, fontSize: 13, color: '#00f2ff' }}>📁 ROOD DIRECTORY</div>
+                    <div className="structure-tree gradient-border">
+                        <div className="tree-header" style={{ marginBottom: 12, fontSize: 13, color: '#00f2ff', fontWeight: 700 }}>📁 {project.name?.toUpperCase()}</div>
                         {renderTree(structure)}
                     </div>
                     <div className="structure-actions glass-panel" style={{ padding: 24, borderRadius: 12 }}>
-                        <h4>Modify Structure</h4>
+                        <h4>Modify {isRegenerating ? "Regenerated" : ""} Structure</h4>
                         <p style={{ fontSize: 13, color: 'var(--dev-text-dim)' }}>
                             {isStructureConfirmed ? "✓ Structure Locked & Finalized" : "You can add, delete or rename folders and files."}
                         </p>
@@ -479,10 +515,25 @@ function DevelopmentAgent({ onClose, onComplete }) {
                             </div>
                         )}
 
-                        <div style={{ marginTop: 'auto', paddingTop: 40, display: 'flex', gap: 12 }}>
-                            {!isStructureConfirmed && <button className="dev-btn dev-btn-secondary" onClick={() => setStructure(null)}>Modify Settings</button>}
-                            <button className="dev-btn dev-btn-primary" onClick={() => confirmStructure()}>
-                                {isStructureConfirmed ? "Sync with Code Tab" : "Confirm & Proceed to Code"}
+                        <div style={{ marginTop: 'auto', paddingTop: 40, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            <div style={{ display: 'flex', gap: 12 }}>
+                                {!isStructureConfirmed && <button className="dev-btn dev-btn-secondary" onClick={() => setStructure(null)}>Modify Settings</button>}
+                                <button className="dev-btn dev-btn-primary" onClick={() => confirmStructure()}>
+                                    {isStructureConfirmed ? "Sync with Code Tab" : "Confirm & Proceed"}
+                                </button>
+                            </div>
+
+                            <button
+                                className="dev-btn"
+                                style={{ background: 'none', border: '1px solid rgba(255,255,255,0.1)', color: 'var(--dev-text-dim)', fontSize: 12, padding: '8px' }}
+                                onClick={() => {
+                                    if (window.confirm("Danger: This will wipe your current structure and start a fresh independent generation. Continue?")) {
+                                        setStructure(null);
+                                        setIsRegenerating(true);
+                                    }
+                                }}
+                            >
+                                ↺ Reset to Fresh Structure
                             </button>
                         </div>
                     </div>
@@ -511,7 +562,7 @@ function DevelopmentAgent({ onClose, onComplete }) {
         <div className="step-content">
             <div className="step-header">
                 <h3>Code Generation</h3>
-                <p>Generate production-ready code based on your design and requirements.</p>
+                <p>{isRegenerating ? "⚡ Independently interpreting project logic..." : "Generate production-ready code based on your design and requirements."}</p>
             </div>
 
             <div className="code-container" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 24, height: 600 }}>
@@ -578,13 +629,16 @@ function DevelopmentAgent({ onClose, onComplete }) {
                     )}
 
                     {codeFiles.every(f => f.status === 'done') && (
-                        <div style={{ marginTop: 20, display: 'flex', gap: 16 }}>
+                        <div style={{ marginTop: 20, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                            <button className="dev-btn dev-btn-primary" onClick={handleDownloadZip}>
+                                📦 Download Professional Template
+                            </button>
                             <button className="dev-btn dev-btn-secondary" onClick={() => {
                                 const reset = codeFiles.map(f => ({ ...f, status: 'pending', code: '' }))
                                 setCodeFiles(reset)
                             }}>Regenerate Entire Code</button>
                             <button className="dev-btn dev-btn-secondary" onClick={() => finalizeDevelopment(false)}>Sync Progress</button>
-                            <button className="dev-btn dev-btn-primary" onClick={() => finalizeDevelopment(true)}>Finalize Development Phase</button>
+                            <button className="dev-btn dev-btn-primary" style={{ background: 'var(--success-shade, #10b981)', color: 'white' }} onClick={() => finalizeDevelopment(true)}>Finalize Development Phase</button>
                         </div>
                     )}
                 </div>
@@ -671,11 +725,39 @@ function DevelopmentAgent({ onClose, onComplete }) {
                 )}
 
                 {step === 'complete' && (
-                    <div className="centered-state" style={{ textAlign: 'center', padding: 64 }}>
-                        <div className="success-icon" style={{ fontSize: 64, marginBottom: 24 }}>✨</div>
-                        <h3>Development Phase Completed!</h3>
-                        <p>Codebase and architecture artifacts generated successfully.</p>
-                        <p>Proceeding to Testing Phase...</p>
+                    <div className="validation-card" style={{ maxWidth: 700, textAlign: 'center' }}>
+                        <div className="success-icon" style={{ fontSize: 64, marginBottom: 24, animation: 'pulse 2s infinite' }}>📦</div>
+                        <h2 style={{ color: 'var(--dev-primary)', marginBottom: 16 }}>Project Template Generated!</h2>
+                        <p style={{ fontSize: 18, marginBottom: 32 }}>
+                            Your professional, production-ready project for <strong>{currentProject?.name}</strong> is now ready for local deployment.
+                        </p>
+
+                        <div className="glass-panel" style={{ padding: 24, marginBottom: 32, textAlign: 'left', background: 'rgba(255,255,255,0.02)' }}>
+                            <h4 style={{ color: 'var(--dev-primary)', marginBottom: 12 }}>📦 What's included in your bundle:</h4>
+                            <ul style={{ paddingLeft: 20, color: 'var(--dev-text-dim)', fontSize: 14, lineHeight: '2' }}>
+                                <li><strong>Professional Structure:</strong> Clean src/ folder organization.</li>
+                                <li><strong>Mandatory Docs:</strong> Detailed README.md, .env.example, .gitignore.</li>
+                                <li><strong>Config Files:</strong> package.json with dependency definitions.</li>
+                                <li><strong>Clean Code:</strong> Fully implemented, scalable source files.</li>
+                            </ul>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center' }}>
+                            <button
+                                className="dev-btn dev-btn-primary"
+                                style={{ padding: '16px 40px', fontSize: 18, width: '100%', justifyContent: 'center' }}
+                                onClick={handleDownloadZip}
+                            >
+                                📥 Download Professional Repository (ZIP)
+                            </button>
+                            <p style={{ color: 'var(--dev-text-dim)', fontSize: 13 }}>
+                                Save this ZIP, run <code>npm install</code>, and follow the instructions in the <strong>README.md</strong>.
+                            </p>
+                        </div>
+
+                        <div style={{ marginTop: 40, borderTop: '1px solid var(--dev-border)', paddingTop: 24 }}>
+                            <p>Proceeding to <strong>Phase 4: Testing</strong> in a few seconds...</p>
+                        </div>
                     </div>
                 )}
             </div>
