@@ -11,10 +11,18 @@ const {
     saveDevelopment,
     saveTesting
 } = require('../controllers/projectController')
+const {
+    getProgress,
+    validateConsistency
+} = require('../controllers/progressController')
 const { protect } = require('../middleware/auth')
 
 // All routes are protected
 router.use(protect)
+
+// Progress & Validation Tracking
+router.get('/:id/progress', getProgress)
+router.post('/:id/validate', validateConsistency)
 
 // Project CRUD
 router.route('/').get(getProjects).post(createProject)
@@ -27,3 +35,4 @@ router.post('/:id/development', saveDevelopment)
 router.post('/:id/testing', saveTesting)
 
 module.exports = router
+

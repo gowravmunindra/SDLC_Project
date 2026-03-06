@@ -65,8 +65,10 @@ const projectSchema = new mongoose.Schema({
         techStack: mongoose.Schema.Types.Mixed,
         structure: mongoose.Schema.Types.Mixed,
         codeFiles: mongoose.Schema.Types.Mixed,
+        fileCount: { type: Number, default: 0 },
         completedAt: Date
     },
+
 
     // Testing Phase
     testing: {
@@ -76,8 +78,22 @@ const projectSchema = new mongoose.Schema({
         testResults: mongoose.Schema.Types.Mixed,
         coverageReport: mongoose.Schema.Types.Mixed,
         completedAt: Date
+    },
+
+    // Progress Tracking Summary
+    progress: {
+        overall_completion: { type: Number, default: 0 },
+        phase_status: {
+            requirements: { type: String, default: 'not_started' },
+            design: { type: String, default: 'not_started' },
+            development: { type: String, default: 'not_started' },
+            testing: { type: String, default: 'not_started' }
+        },
+        health_status: { type: String, default: 'Healthy' },
+        last_validated: Date
     }
 }, {
+
     timestamps: true
 })
 

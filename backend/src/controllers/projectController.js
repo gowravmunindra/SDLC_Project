@@ -1,4 +1,6 @@
 const Project = require('../models/Project')
+const progressService = require('../services/projectProgressService')
+
 
 // @desc    Get all user projects
 // @route   GET /api/projects
@@ -127,6 +129,7 @@ const saveRequirements = async (req, res) => {
         project.status = 'design'
 
         await project.save()
+        await progressService.updateProjectProgress(project._id)
         res.json(project)
     } catch (error) {
         res.status(500).json({ message: error.message })
@@ -155,6 +158,7 @@ const saveDesign = async (req, res) => {
         project.status = 'development'
 
         await project.save()
+        await progressService.updateProjectProgress(project._id)
         res.json(project)
     } catch (error) {
         res.status(500).json({ message: error.message })
@@ -183,6 +187,7 @@ const saveDevelopment = async (req, res) => {
         project.status = 'testing'
 
         await project.save()
+        await progressService.updateProjectProgress(project._id)
         res.json(project)
     } catch (error) {
         res.status(500).json({ message: error.message })
@@ -211,6 +216,7 @@ const saveTesting = async (req, res) => {
         project.status = 'completed'
 
         await project.save()
+        await progressService.updateProjectProgress(project._id)
         res.json(project)
     } catch (error) {
         res.status(500).json({ message: error.message })

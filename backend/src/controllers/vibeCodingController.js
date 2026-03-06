@@ -1,5 +1,6 @@
 const Project = require('../models/Project');
 const vibeCodingService = require('../services/vibeCodingService');
+const progressService = require('../services/projectProgressService');
 const mongoose = require('mongoose');
 
 const isValidObjectId = (id) => id && id !== 'standalone' && mongoose.Types.ObjectId.isValid(id);
@@ -14,10 +15,14 @@ exports.generateProject = async (req, res) => {
     if (isValidObjectId(projectId)) {
       await Project.findByIdAndUpdate(projectId, {
         'development.structure': result.structure,
-        'development.codeFiles': result.files,
+        'development.fileCount': result.files.length,
+        'development.codeFiles': [], // Space optimization: don't store all code in DB
         'development.lastPrompt': userPrompt,
         'development.updatedAt': new Date()
       });
+
+      // Auto-update progress
+      await progressService.updateProjectProgress(projectId);
     }
 
     res.json({ success: true, ...result });
@@ -54,11 +59,16 @@ exports.updateProject = async (req, res) => {
     if (isValidObjectId(projectId)) {
       await Project.findByIdAndUpdate(projectId, {
         'development.structure': newStructure,
-        'development.codeFiles': updatedFiles,
+        'development.fileCount': updatedFiles.length,
+        'development.codeFiles': [], // Space optimization: don't store all code in DB
         'development.lastPrompt': userPrompt,
         'development.updatedAt': new Date()
       });
+
+      // Auto-update progress
+      await progressService.updateProjectProgress(projectId);
     }
+
 
     res.json({
       success: true,
