@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom'
-import { AuthProvider } from './contexts/AuthContext'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ProjectProvider } from './contexts/ProjectContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import HomePage from './pages/HomePage'
@@ -11,7 +11,7 @@ import RequirementsPage from './pages/RequirementsPage'
 import DesignPage from './pages/DesignPage'
 import DevelopmentPage from './pages/DevelopmentPage'
 import TestingPage from './pages/TestingPage'
-import ChatbotAgent from './components/ChatbotAgent'
+import AIGuide from './components/AIGuide'
 
 function App() {
     return (
@@ -46,8 +46,8 @@ function App() {
                             } />
                         </Routes>
 
-                        {/* Chatbot is always available on all pages */}
-                        <ConditionalChatbot />
+                        {/* AI Guide is available once authenticated */}
+                        <ConditionalGuide />
                     </div>
                 </ProjectProvider>
             </AuthProvider>
@@ -55,13 +55,10 @@ function App() {
     )
 }
 
-function ConditionalChatbot() {
-    const location = useLocation();
-    // Hide only on dashboard as requested
-    if (location.pathname === '/dashboard') {
-        return null;
-    }
-    return <ChatbotAgent />;
+function ConditionalGuide() {
+    const { isAuthenticated } = useAuth();
+    if (!isAuthenticated) return null;
+    return <AIGuide />;
 }
 
 export default App

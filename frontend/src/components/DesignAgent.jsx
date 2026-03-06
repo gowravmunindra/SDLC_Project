@@ -32,6 +32,8 @@ function DesignAgent({ onClose, onComplete }) {
     const [customPrompt, setCustomPrompt] = useState('')
     const [isModifying, setIsModifying] = useState(false)
 
+    const [lightbox, setLightbox] = useState({ isOpen: false, url: '' });
+
     // Load Data - Robust Initialization
     useEffect(() => {
         if (!currentProject) return
@@ -153,8 +155,8 @@ Keep it professional and specific to the project.`;
 
         const typeSpecs = {
             useCase: {
-                blueprint: "actor \"User\" as U\nusecase \"Core Feature\" as UC1\nU --> UC1",
-                rules: "Focus on primary actors and 3-4 key use cases. Use simple arrows -->."
+                blueprint: "left to right direction\nactor \"User\" as U\nusecase \"Core Feature\" as UC1\nU --> UC1",
+                rules: "Always include 'left to right direction'. Focus on primary actors and 3-4 key use cases. Use simple arrows -->."
             },
             class: {
                 blueprint: "class \"CoreEntity\" {\n  +id: string\n  +update()\n}\nclass \"Service\" {\n  +execute()\n}\nCoreEntity -- Service",
@@ -166,7 +168,7 @@ Keep it professional and specific to the project.`;
             },
             activity: {
                 blueprint: "start\n:User Input;\nif (Valid?) then (yes)\n  :Process Action;\nelse (no)\n  :Show Error;\nendif\nstop",
-                rules: "Show a simple flow from start to stop. Use :Action; syntax. Avoid external entity definitions unless critical."
+                rules: "Show a simple flow from start to stop. Use :Action; syntax (always end actions with a semicolon). Avoid external entity definitions."
             },
             state: {
                 blueprint: "[*] --> Idle\nIdle --> Active : Start\nActive --> [*] : End",
@@ -174,30 +176,31 @@ Keep it professional and specific to the project.`;
             },
             component: {
                 blueprint: "[Frontend] ..> [API] : JSON\n[API] ..> [DB] : SQL",
-                rules: "High-level overview only. Show 3-4 main architectural blocks."
+                rules: "High-level overview only. Show 3-4 main architectural blocks. Use [Component] syntax."
             },
             deployment: {
-                blueprint: "node \"Server\" {\n  [App]\n}\ndatabase \"Store\" {\n  [DB]\n}\nApp -> Store",
-                rules: "Show only physical infrastructure (Server, DB, Cluster)."
+                blueprint: "node \"Server Cluster\" {\n  [App Instance]\n}\ndatabase \"Database Cluster\" {\n  [Data Store]\n}\n[App Instance] --> [Data Store] : JDBC",
+                rules: "Show physical infrastructure. Use 'node', 'database', or 'cloud'. IMPORTANT: NEVER use 'nodo', it is not a keyword."
             }
         };
 
         const spec = typeSpecs[type];
 
-        return `Act as a Professional Software Architect. Generate a MINIMAL, PRODUCTION-READY PlantUML ${type} diagram for "${projectName}".
+        return `Act as a Senior Software Architect and PlantUML Expert. Generate a VALID, MINIMAL, PRODUCTION-READY PlantUML ${type} diagram for "${projectName}".
 Objective: Visualize ${functionalReqs}.
 
-STRICT GENERATION RULES:
-1. MINIMALISM: Show ONLY the most critical 5-8 elements/steps. Avoid bloat.
-2. CLEAN CODE: No unnecessary comments, aliases, or headers. Define elements directly unless aliases are needed for clarity.
-3. PRODUCTION LEVEL: Professional naming, clean logic, and standard syntax.
+STRICT SYNTAX & STYLE RULES:
+1. NO HALLUCinations: Use ONLY valid PlantUML keywords. (e.g., 'node', NOT 'nodo').
+2. MINIMALISM: Show ONLY the most critical 5-8 elements/steps. Avoid bloat.
+3. CLEAN CODE: No unnecessary comments. Define elements directly.
 4. SYNTAX: ${spec.rules}
-5. NO CONVERSATION: Return ONLY the @startuml ... @enduml block. No explanations.
+5. LAYOUT: Ensure the diagram flows logically (Left to Right is preferred for Use Case/Component).
+6. NO CONVERSATION: Return ONLY the @startuml ... @enduml block.
 
 BLUEPRINT:
 ${spec.blueprint}
 
-Ensure the diagram is readable, technically accurate, and focused.`;
+Generate the final PlantUML code now.`;
     }
 
     const generateDiagram = async (type) => {
@@ -217,7 +220,7 @@ Ensure the diagram is readable, technically accurate, and focused.`;
 
             // 2. Check for AI refusals or empty output
             const hasTags = code.toLowerCase().includes('@startuml') && code.toLowerCase().includes('@enduml')
-            if (!hasTags && (codeRaw.length < 100 || codeRaw.toLowerCase().includes('sorry'))) {
+            if (!hasTags && (codeRaw.length < 50 || codeRaw.toLowerCase().includes('sorry'))) {
                 throw new Error("AI failed to generate a valid diagram. Please retry.");
             }
 
@@ -236,29 +239,33 @@ Ensure the diagram is readable, technically accurate, and focused.`;
                 code = code.replace(/@startuml/i, `@startuml\n${DIAGRAM_STYLE}\n`);
             }
 
-            // 6. TYPE-SPECIFIC SYNTAX FIXES
+            // 6. TYPE-SPECIFIC SYNTAX FIXES & SANITIZATION
             code = code
                 .replace(/\/\//g, "'") // Fix invalid C-style comments
                 .replace(/-\s+>/g, '->')
-                .replace(/--\s+>/g, '-->');
+                .replace(/--\s+>/g, '-->')
+                .replace(/\bnodo\b/gi, 'node') // Fix common AI typo 'nodo' -> 'node'
+                .replace(/\busecase\s+"([^"]+)"\s+as\s+(@\w+)/gi, 'usecase "$1" as $2') // Fix invalid @ alias
+                .replace(/skinparam\s+shadowing\s+true/gi, 'skinparam shadowing false');
 
             if (type === 'activity') {
-                // Fix common activity diagram errors
-                if (!code.includes('start')) code = code.replace('@startuml', '@startuml\nstart');
-                if (!code.includes('stop') && !code.includes('end')) code = code.replace('@enduml', 'stop\n@enduml');
+                if (!code.includes('start')) code = code.replace(/@startuml/i, '@startuml\nstart');
+                if (!code.includes('stop') && !code.includes('end')) code = code.replace(/@enduml/i, 'stop\n@enduml');
 
-                // Ensure lines like ":Action" become ":Action;"
+                // Fix missing semicolons in activity blocks
                 code = code.split('\n').map(line => {
                     const l = line.trim();
-                    if (l.startsWith(':') && !l.endsWith(';')) return line + ';';
+                    if (l.startsWith(':') && !l.endsWith(';') && !l.includes('|')) return line + ';';
                     return line;
                 }).join('\n');
             }
 
+            if (type === 'useCase' && !code.includes('left to right direction')) {
+                code = code.replace(/@startuml/i, '@startuml\nleft to right direction\n');
+            }
+
             if (type === 'state') {
-                // Ensure state diagrams use standard arrows
                 code = code.replace(/\[ \* \]/g, '[*]');
-                code = code.replace(/->/g, '-->');
             }
 
             code = code.trim();
@@ -287,18 +294,19 @@ Ensure the diagram is readable, technically accurate, and focused.`;
         setIsModifying(true)
         try {
             const current = diagrams[activeDiagram]
-            const prompt = `You are a PlantUML expert. Modify the following code according to the user request.
+            const prompt = `You are a Senior PlantUML Architect. Modify the following code based on the user request.
             
             CURRENT CODE:
             ${current.code}
             
             USER INSTRUCTION: ${customPrompt}
             
-            STRICT RULES:
+            STRICT VALIDATION RULES:
             1. Output ONLY valid PlantUML code.
-            2. Start with @startuml and end with @enduml.
-            3. Apply the changes requested by the user.
-            4. Do not include any explanation or markdown tags.`
+            2. FIX typos: Use 'node', NOT 'nodo'.
+            3. Ensure all actions in activity diagrams end with a semicolon ';'.
+            4. Use 'left to right direction' for diagrams that look clipped or squeezed.
+            5. Return ONLY the code block.`
 
             const result = await geminiService.generateContent(prompt)
 
@@ -311,8 +319,9 @@ Ensure the diagram is readable, technically accurate, and focused.`;
                 .replace(/@enduml+/gi, '@enduml')
                 .replace(/-\s+>/g, '->')
                 .replace(/--\s+>/g, '-->')
-                .replace(/\n\s*(class|node|actor|participant|component|state|usecase|package|artifact|container)\s*@enduml$/i, '\n@enduml')
+                .replace(/\bnodo\b/gi, 'node')
                 .trim();
+
 
             if (code) {
                 setDiagrams(prev => ({
@@ -488,7 +497,7 @@ Ensure the diagram is readable, technically accurate, and focused.`;
                             </div>
 
                             {/* Preview Column (RIGHT) */}
-                            <div className="diagram-column preview-column" style={{ padding: '20px', flex: '1.5' }}>
+                            <div className="diagram-column preview-column">
                                 {diagrams[activeDiagram].status === 'loading' ? (
                                     <div className="centered-state">
                                         <div className="loading-spinner"></div>
@@ -496,15 +505,29 @@ Ensure the diagram is readable, technically accurate, and focused.`;
                                     </div>
                                 ) : diagrams[activeDiagram].url ? (
                                     <div className="preview-content">
-                                        <img src={diagrams[activeDiagram].url} alt="Diagram" style={{ maxWidth: '100%', height: 'auto' }} />
-                                        <div style={{ marginTop: '10px', display: 'flex', gap: '10px' }}>
-                                            <a href={diagrams[activeDiagram].url} target="_blank" rel="noreferrer" className="btn-icon">Full View</a>
+                                        <img
+                                            src={diagrams[activeDiagram].url}
+                                            alt="Diagram"
+                                        />
+                                        <div className="preview-actions">
+                                            <button
+                                                className="btn-icon"
+                                                onClick={() => setLightbox({ isOpen: true, url: diagrams[activeDiagram].url })}
+                                            >
+                                                🔍 Full View (SVG)
+                                            </button>
+                                            <button
+                                                className="btn-icon"
+                                                onClick={() => setLightbox({ isOpen: true, url: diagrams[activeDiagram].url.replace('/svg/', '/png/') })}
+                                            >
+                                                🖼️ Full View (PNG)
+                                            </button>
                                             <button
                                                 className="btn-icon"
                                                 onClick={() => generateDiagram(activeDiagram)}
                                                 disabled={diagrams[activeDiagram].status === 'loading'}
                                             >
-                                                {diagrams[activeDiagram].status === 'loading' ? 'Processing...' : '⟳ Retry'}
+                                                ⟳ Retry
                                             </button>
                                         </div>
                                     </div>
@@ -523,12 +546,19 @@ Ensure the diagram is readable, technically accurate, and focused.`;
                         </div>
 
                         <div className="step-actions">
-                            <button className="btn-secondary" onClick={() => setStep('architecture')}>← Back</button>
-                            <button className="btn-primary" onClick={handleComplete}>✅ Finalize & Review</button>
+                            <button className="btn-secondary" onClick={() => setStep('architecture')}>← Back to Architecture</button>
+                            <button className="btn-primary" onClick={handleComplete}>Complete Design Phase →</button>
                         </div>
                     </div>
                 )}
             </div>
+
+            {lightbox.isOpen && (
+                <DiagramLightbox
+                    url={lightbox.url}
+                    onClose={() => setLightbox({ isOpen: false, url: '' })}
+                />
+            )}
 
             {/* Status Overlay */}
             <div style={{ position: 'fixed', bottom: '10px', left: '10px', background: 'rgba(0,0,0,0.8)', color: '#0f0', padding: '5px 10px', borderRadius: '5px', fontSize: '10px', zIndex: 10000, pointerEvents: 'none' }}>
@@ -537,5 +567,66 @@ Ensure the diagram is readable, technically accurate, and focused.`;
         </div>
     )
 }
+
+// PREMIUM LIGHTBOX COMPONENT
+const DiagramLightbox = ({ url, onClose }) => {
+    const [scale, setScale] = useState(1);
+    const [position, setPosition] = useState({ x: 0, y: 0 });
+    const [isDragging, setIsDragging] = useState(false);
+    const dragStart = useRef({ x: 0, y: 0 });
+
+    const handleWheel = (e) => {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+        const newScale = Math.max(0.2, Math.min(5, scale + delta));
+        setScale(newScale);
+    };
+
+    const handleMouseDown = (e) => {
+        setIsDragging(true);
+        dragStart.current = { x: e.clientX - position.x, y: e.clientY - position.y };
+    };
+
+    const handleMouseMove = (e) => {
+        if (!isDragging) return;
+        setPosition({
+            x: e.clientX - dragStart.current.x,
+            y: e.clientY - dragStart.current.y
+        });
+    };
+
+    const handleMouseUp = () => setIsDragging(false);
+
+    return (
+        <div className="diagram-lightbox" onWheel={handleWheel}>
+            <div className="lightbox-overlay" onClick={onClose}></div>
+            <div className="lightbox-hint">Scroll to Zoom • Drag to Pan</div>
+            <div
+                className="lightbox-content"
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+            >
+                <img
+                    src={url}
+                    alt="Full View"
+                    draggable="false"
+                    style={{
+                        transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+                        cursor: isDragging ? 'grabbing' : 'grab'
+                    }}
+                />
+            </div>
+            <div className="lightbox-controls">
+                <button onClick={() => setScale(s => Math.max(0.2, s - 0.2))}>−</button>
+                <span className="zoom-level">{Math.round(scale * 100)}%</span>
+                <button onClick={() => setScale(s => Math.min(5, s + 0.2))}>+</button>
+                <button onClick={() => { setScale(1); setPosition({ x: 0, y: 0 }); }}>↺</button>
+                <button className="btn-close-large" onClick={onClose}>×</button>
+            </div>
+        </div>
+    );
+};
 
 export default DesignAgent

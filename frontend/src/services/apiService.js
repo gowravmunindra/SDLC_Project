@@ -86,7 +86,10 @@ const apiService = {
 
     // Vibe Coding (Creative Generation)
     vibeGenerate: (payload) => api.post('/vibe-coding/generate-project', payload),
-    vibeUpdate: (payload) => api.post('/vibe-coding/update-project', payload)
+    vibeUpdate: (payload) => api.post('/vibe-coding/update-project', payload),
+
+    // AI Guide
+    askGuide: (projectId, query) => api.post('/guide/ask', { projectId, query })
 }
 
 export default apiService

@@ -22,6 +22,7 @@ app.use('/api/projects', require('./routes/projectRoutes'))
 app.use('/api/ai', require('./routes/aiRoutes'))
 app.use('/api/development', require('./routes/developmentRoutes'))
 app.use('/api/vibe-coding', require('./routes/vibeCodingRoutes'))
+app.use('/api/guide', require('./routes/aiGuideRoutes'))
 
 // Health check
 app.get('/api/health', (req, res) => {

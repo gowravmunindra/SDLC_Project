@@ -395,15 +395,19 @@
     overflow: auto;
     padding: 32px;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    /* Removed explicit justify/align to prevent clipping in negative space on overflow */
 }
 
 .preview-content img {
+    margin: auto;
+    /* Correct way to center in flex while allowing overflow scrolling */
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
     border-radius: 4px;
+    background: white;
+    /* Give a solid background to the diagram image */
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .preview-actions {
@@ -570,4 +574,125 @@
         opacity: 1;
         transform: translateY(0);
     }
+}
+
+/* Lightbox Styles */
+.diagram-lightbox {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10, 10, 15, 0.95);
+    backdrop-filter: blur(12px);
+    animation: fadeInModal 0.3s ease;
+}
+
+@keyframes fadeInModal {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+.lightbox-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    cursor: zoom-out;
+}
+
+.lightbox-content {
+    position: relative;
+    width: 95vw;
+    height: 95vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    user-select: none;
+}
+
+.lightbox-content img {
+    transition: transform 0.05s ease-out;
+    background: white;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    border-radius: 8px;
+    padding: 20px;
+    max-width: 90%;
+    max-height: 90%;
+    transform-origin: center;
+}
+
+.lightbox-controls {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(30, 41, 59, 0.8);
+    padding: 8px 16px;
+    border-radius: 40px;
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+    z-index: 10001;
+}
+
+.lightbox-controls button {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 1.2rem;
+}
+
+.lightbox-controls button:hover {
+    background: var(--primary-600);
+    border-color: var(--primary-600);
+    transform: translateY(-2px);
+}
+
+.lightbox-controls .zoom-level {
+    color: white;
+    font-size: 0.85rem;
+    font-weight: 600;
+    min-width: 60px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.lightbox-controls .btn-close-large {
+    background: #ef4444;
+    border-color: #ef4444;
+    font-weight: bold;
+}
+
+.lightbox-hint {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.8rem;
+    pointer-events: none;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
 }
