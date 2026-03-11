@@ -10,16 +10,18 @@
 .agent-header {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
-    padding: 24px 32px;
-    background: #161a29;
+    align-items: center;
+    padding: 16px 32px;
+    background: #0f111a;
     border-bottom: 1px solid #2d334a;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    z-index: 10;
 }
 
 .agent-title-section h2 {
-    font-size: 24px;
+    font-size: 20px;
     font-weight: 700;
-    margin: 8px 0;
+    margin: 4px 0;
     color: #fff;
 }
 

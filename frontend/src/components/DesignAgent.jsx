@@ -151,57 +151,152 @@ Keep it professional and specific to the project.`;
     }
 
     const constructDiagramPrompt = (type, projectName, reqs, arch) => {
-        const functionalReqs = reqs?.functionalRequirements?.slice(0, 3).map(r => r.title).join(', ') || 'Core workflows';
+        // SELECT CORE REQUIREMENTS (Filter out generic ones like Login/Auth)
+        const coreReqs = reqs?.functionalRequirements?.filter(r => 
+            !r.title.toLowerCase().includes('auth') && 
+            !r.title.toLowerCase().includes('login') && 
+            !r.title.toLowerCase().includes('register') &&
+            !r.title.toLowerCase().includes('authentication')
+        ) || [];
+
+        // If after filtering we have enough project-specific reqs, use them. Otherwise fallback.
+        const focusReqs = coreReqs.length > 0 ? coreReqs : reqs?.functionalRequirements || [];
+        const functionalReqs = focusReqs.slice(0, 4).map(r => r.title).join(', ');
 
         const typeSpecs = {
             useCase: {
                 blueprint: "left to right direction\nactor \"User\" as U\nusecase \"Core Feature\" as UC1\nU --> UC1",
-                rules: "Always include 'left to right direction'. Focus on primary actors and 3-4 key use cases. Use simple arrows -->."
+                rules: "Always include 'left to right direction'. Focus on primary actors and 3-4 key use cases. Use simple arrows -->. IMPORTANT: Wrap ALL labels in double quotes."
             },
             class: {
                 blueprint: "class \"CoreEntity\" {\n  +id: string\n  +update()\n}\nclass \"Service\" {\n  +execute()\n}\nCoreEntity -- Service",
-                rules: "Show only 3-4 core classes. Include 2-3 essential fields/methods per class. Keep relationships simple."
+                rules: "Show only 3-4 core classes. Include 2-3 essential fields/methods per class. Keep relationships simple. IMPORTANT: Wrap ALL names and types in double quotes."
             },
             sequence: {
-                blueprint: "actor \"User\" as U\nparticipant \"Controller\" as C\nparticipant \"DB\" as D\nU -> C: Request\nC -> D: Query\nD --> C: Result\nC --> U: Response",
-                rules: "Show 3-5 key participants. Map one primary success path. Use clean horizontal arrows."
+                blueprint: "actor \"User\" as U\nparticipant \"Controller\" as C\nparticipant \"DB\" as D\nU -> C: \"Request\"\nC -> D: \"Query\"\nD --> C: \"Result\"\nC --> U: \"Response\"",
+                rules: "Show 3-5 key participants. Map one primary success path. Use clean horizontal arrows. IMPORTANT: Wrap ALL messages and participant names in double quotes."
             },
             activity: {
-                blueprint: "start\n:User Input;\nif (Valid?) then (yes)\n  :Process Action;\nelse (no)\n  :Show Error;\nendif\nstop",
-                rules: "Show a simple flow from start to stop. Use :Action; syntax (always end actions with a semicolon). Avoid external entity definitions."
+                blueprint: "start\n:\"User Input\";\nif (\"Valid?\") then (yes)\n  :\"Process Action\";\nelse (no)\n  :\"Show Error\";\nendif\nstop",
+                rules: "Show a simple flow from start to stop. Use :\"Action Name\"; syntax (always end actions with a semicolon and wrap text in quotes). Use 'if (...) then (...) ... else (...) ... endif' syntax."
             },
             state: {
-                blueprint: "[*] --> Idle\nIdle --> Active : Start\nActive --> [*] : End",
-                rules: "Show 3-4 essential states. Use clear transition labels."
+                blueprint: "state \"Dashboard\" as Dashboard\n[*] --> Dashboard\nDashboard --> \"TaskList\" : \"View Tasks\"\n\"TaskList\" --> \"TaskDetail\" : \"Select Task\"",
+                rules: "ALWAYS define states explicitly using 'state \"Name\" as Alias'. Use [*] -> Alias for start/end. Ensure all transition labels are in double quotes."
             },
             component: {
-                blueprint: "[Frontend] ..> [API] : JSON\n[API] ..> [DB] : SQL",
-                rules: "High-level overview only. Show 3-4 main architectural blocks. Use [Component] syntax."
+                blueprint: "package \"Web Browser\" {\n  [Frontend Component]\n}\nnode \"API Server\" {\n  [REST API Service]\n}\n[Frontend Component] --> [REST API Service] : \"JSON/HTTPS\"",
+                rules: "High-level overview only. Show 3-4 main architectural blocks. Use [Component Name] syntax. Wrap interface labels in quotes."
             },
             deployment: {
-                blueprint: "node \"Server Cluster\" {\n  [App Instance]\n}\ndatabase \"Database Cluster\" {\n  [Data Store]\n}\n[App Instance] --> [Data Store] : JDBC",
-                rules: "Show physical infrastructure. Use 'node', 'database', or 'cloud'. IMPORTANT: NEVER use 'nodo', it is not a keyword."
+                blueprint: "node \"User PC\" {\n  component \"Web Browser\"\n}\nnode \"AWS Cloud\" {\n  node \"App Server\" {\n     component \"REST API\"\n  }\n}\n\"Web Browser\" --> \"REST API\" : \"HTTPS\"",
+                rules: "Show physical infrastructure. Use 'node', 'database', or 'cloud'. Wrap ALL device and connection names in quotes."
             }
         };
 
         const spec = typeSpecs[type];
 
         return `Act as a Senior Software Architect and PlantUML Expert. Generate a VALID, MINIMAL, PRODUCTION-READY PlantUML ${type} diagram for "${projectName}".
-Objective: Visualize ${functionalReqs}.
+Objective: Visualize the core business logic: ${functionalReqs}.
+
+IMPORTANT: DO NOT focus on generic features like Login, Registration, or Authentication unless the diagram type specifically requires it. Focus on the UNIQUE functionality of the project described.
 
 STRICT SYNTAX & STYLE RULES:
-1. NO HALLUCinations: Use ONLY valid PlantUML keywords. (e.g., 'node', NOT 'nodo').
-2. MINIMALISM: Show ONLY the most critical 5-8 elements/steps. Avoid bloat.
-3. CLEAN CODE: No unnecessary comments. Define elements directly.
-4. SYNTAX: ${spec.rules}
-5. LAYOUT: Ensure the diagram flows logically (Left to Right is preferred for Use Case/Component).
-6. NO CONVERSATION: Return ONLY the @startuml ... @enduml block.
+1. NO NAKED TITLES: NEVER write the name of the diagram on a line by itself. If you want a title, use 'title "My Diagram"'.
+2. NO HALLUCinations: Use ONLY valid PlantUML keywords.
+3. MINIMALISM: Show ONLY the most critical 5-8 elements/steps. Avoid bloat.
+4. CLEAN CODE: No unnecessary comments. Define elements directly.
+5. SYNTAX: ${spec.rules}
+6. LABELS: Every single label, message, or description MUST be enclosed in double quotes (e.g., :\"Action\"; or --> \"Message\").
+7. LAYOUT: Ensure the diagram flows logically (Left to Right is preferred for Use Case/Component).
+8. NO CONVERSATION: Return ONLY the @startuml ... @enduml block.
 
 BLUEPRINT:
 ${spec.blueprint}
 
 Generate the final PlantUML code now.`;
     }
+
+    const normalizePlantUML = (codeRaw, type) => {
+        // 1. Core structural cleaning
+        let code = cleanPlantUML(codeRaw);
+
+        // 2. Inject global styles if missing
+        if (!code.toLowerCase().includes('skinparam')) {
+            code = code.replace(/@startuml/i, `@startuml\n${DIAGRAM_STYLE}\n`);
+        }
+
+        // 3. Global syntax fixes
+        code = code
+            .replace(/\/\//g, "'") // Fix invalid C-style comments
+            .replace(/-\s+>/g, '->')
+            .replace(/--\s+>/g, '-->')
+            .replace(/\bnodo\b/gi, 'node') // Fix common AI typo 'nodo' -> 'node'
+            .replace(/\busecase\s+"([^"]+)"\s+as\s+(@\w+)/gi, 'usecase "$1" as $2') // Fix invalid @ alias
+            .replace(/skinparam\s+shadowing\s+true/gi, 'skinparam shadowing false');
+
+        // 4. Activity-specific normalization
+        if (type === 'activity') {
+            code = code.replace(/^:([^"].*);/gm, ':"$1";');
+            if (!code.includes('start')) code = code.replace(/@startuml/i, '@startuml\nstart');
+            if (!code.includes('stop') && !code.includes('end')) code = code.replace(/@enduml/i, 'stop\n@enduml');
+            
+            code = code.split('\n').map(line => {
+                const l = line.trim();
+                if (l.startsWith(':') && !l.endsWith(';') && !l.includes('|')) return line + ';';
+                return line;
+            }).join('\n');
+            
+            code = code
+                .replace(/if\s+(\([^)]+\))\s+{/gi, 'if $1 then')
+                .replace(/}\s*else\s*{/gi, 'else')
+                .replace(/}\s*endif/gi, 'endif');
+        }
+
+        // 5. Sequence-specific fixes
+        if (type === 'sequence') {
+            code = code.replace(/([->]+)\s+([^"]\w[\w\s?]*)$/gm, '$1 "$2"');
+        }
+
+        // 6. UseCase layout consistency
+        if (type === 'useCase' && !code.includes('left to right direction')) {
+            code = code.replace(/@startuml/i, '@startuml\nleft to right direction\n');
+        }
+
+        // 7. State-specific fixes & Type Hinting
+        if (type === 'state') {
+            code = code.replace(/\[ \* \]/g, '[*]');
+            
+            // Smarter arrow labeling: Only wrap in quotes if there are spaces and not already quoted
+            code = code.split('\n').map(line => {
+                if (line.includes('-->')) {
+                    const parts = line.split('-->');
+                    if (parts.length === 2) {
+                        let target = parts[1].trim();
+                        // If target has spaces and no quotes/colon, and isn't [*]
+                        if (target.includes(' ') && !target.includes('"') && !target.includes(':') && target !== '[*]') {
+                            return `${parts[0]} --> "${target}"`;
+                        }
+                    }
+                }
+                return line;
+            }).join('\n');
+
+            // FORCE STATE TYPE HINT if missing to prevent sequence assumption
+            if (!code.toLowerCase().includes('state ')) {
+                code = code.replace(/@startuml/i, '@startuml\nstate " " as force_state_type <<hidden>>\nhide force_state_type\n');
+            }
+        }
+        
+        // 8. Structural Layout Type Hinting
+        if (type === 'deployment' || type === 'component') {
+            if (!code.toLowerCase().includes('node ') && !code.toLowerCase().includes('package ')) {
+                code = code.replace(/@startuml/i, '@startuml\nnode " " as force_arch_type <<hidden>>\nhide force_arch_type\n');
+            }
+        }
+
+        return code.trim();
+    };
 
     const generateDiagram = async (type) => {
         console.log(`[DesignAgent] Targeted Generation: ${type}`)
@@ -215,60 +310,14 @@ Generate the final PlantUML code now.`;
             const codeRaw = await geminiService.generateContent(prompt, true)
             console.log(`[DesignAgent] Raw AI Response for ${type}:`, codeRaw)
 
-            // 1. Clean and Sanitize
-            let code = cleanPlantUML(codeRaw)
-
-            // 2. Check for AI refusals or empty output
-            const hasTags = code.toLowerCase().includes('@startuml') && code.toLowerCase().includes('@enduml')
+            // 1. Check for AI refusals or empty output
+            const hasTags = codeRaw.toLowerCase().includes('@startuml') && codeRaw.toLowerCase().includes('@enduml')
             if (!hasTags && (codeRaw.length < 50 || codeRaw.toLowerCase().includes('sorry'))) {
                 throw new Error("AI failed to generate a valid diagram. Please retry.");
             }
 
-            // 3. Fallback: if no tags but it looks like code, try to wrap it
-            if (!hasTags && codeRaw.length > 20) {
-                code = '@startuml\n' + codeRaw.replace(/```[a-z]*\s*/g, '').replace(/```\s*/g, '') + '\n@enduml'
-                code = cleanPlantUML(code)
-            }
-
-            // 4. Force tags if still missing
-            if (!code.toLowerCase().includes('@startuml')) code = '@startuml\n' + code
-            if (!code.toLowerCase().includes('@enduml')) code = code + '\n@enduml'
-
-            // 5. Inject styles
-            if (!code.toLowerCase().includes('skinparam')) {
-                code = code.replace(/@startuml/i, `@startuml\n${DIAGRAM_STYLE}\n`);
-            }
-
-            // 6. TYPE-SPECIFIC SYNTAX FIXES & SANITIZATION
-            code = code
-                .replace(/\/\//g, "'") // Fix invalid C-style comments
-                .replace(/-\s+>/g, '->')
-                .replace(/--\s+>/g, '-->')
-                .replace(/\bnodo\b/gi, 'node') // Fix common AI typo 'nodo' -> 'node'
-                .replace(/\busecase\s+"([^"]+)"\s+as\s+(@\w+)/gi, 'usecase "$1" as $2') // Fix invalid @ alias
-                .replace(/skinparam\s+shadowing\s+true/gi, 'skinparam shadowing false');
-
-            if (type === 'activity') {
-                if (!code.includes('start')) code = code.replace(/@startuml/i, '@startuml\nstart');
-                if (!code.includes('stop') && !code.includes('end')) code = code.replace(/@enduml/i, 'stop\n@enduml');
-
-                // Fix missing semicolons in activity blocks
-                code = code.split('\n').map(line => {
-                    const l = line.trim();
-                    if (l.startsWith(':') && !l.endsWith(';') && !l.includes('|')) return line + ';';
-                    return line;
-                }).join('\n');
-            }
-
-            if (type === 'useCase' && !code.includes('left to right direction')) {
-                code = code.replace(/@startuml/i, '@startuml\nleft to right direction\n');
-            }
-
-            if (type === 'state') {
-                code = code.replace(/\[ \* \]/g, '[*]');
-            }
-
-            code = code.trim();
+            // 2. Run consolidated normalization
+            const code = normalizePlantUML(codeRaw, type);
 
             setDiagrams(prev => ({
                 ...prev,
@@ -293,6 +342,11 @@ Generate the final PlantUML code now.`;
         if (!customPrompt) return
         setIsModifying(true)
         try {
+            setDiagrams(prev => ({
+                ...prev,
+                [activeDiagram]: { ...prev[activeDiagram], status: 'loading', error: null }
+            }))
+
             const current = diagrams[activeDiagram]
             const prompt = `You are a Senior PlantUML Architect. Modify the following code based on the user request.
             
@@ -304,24 +358,14 @@ Generate the final PlantUML code now.`;
             STRICT VALIDATION RULES:
             1. Output ONLY valid PlantUML code.
             2. FIX typos: Use 'node', NOT 'nodo'.
-            3. Ensure all actions in activity diagrams end with a semicolon ';'.
-            4. Use 'left to right direction' for diagrams that look clipped or squeezed.
-            5. Return ONLY the code block.`
+            3. Ensure all labels/messages are wrapped in double quotes.
+            4. Use 'start' and 'stop' for activity diagrams.
+            5. Return ONLY the @startuml ... @enduml block.`
 
-            const result = await geminiService.generateContent(prompt)
+            const resultRaw = await geminiService.generateContent(prompt)
 
-            // Apply refined cleaning logic
-            let code = cleanPlantUML(result)
-
-            // Basic syntax fixes
-            code = code
-                .replace(/@startuml+/gi, '@startuml')
-                .replace(/@enduml+/gi, '@enduml')
-                .replace(/-\s+>/g, '->')
-                .replace(/--\s+>/g, '-->')
-                .replace(/\bnodo\b/gi, 'node')
-                .trim();
-
+            // Apply consolidated normalization
+            const code = normalizePlantUML(resultRaw, activeDiagram)
 
             if (code) {
                 setDiagrams(prev => ({
@@ -337,6 +381,10 @@ Generate the final PlantUML code now.`;
             }
         } catch (error) {
             console.error('Modify failed:', error)
+            setDiagrams(prev => ({
+                ...prev,
+                [activeDiagram]: { ...prev[activeDiagram], status: 'error', error: error.message }
+            }))
         } finally {
             setIsModifying(false)
         }
@@ -470,8 +518,10 @@ Generate the final PlantUML code now.`;
 
                         <div className="diagram-workspace glass-panel">
                             {/* Editor Column (LEFT) */}
-                            <div className="diagram-column editor-column" style={{ padding: '20px', borderRight: '1px solid var(--border-color)', flex: '1' }}>
-                                <h4>Modify Diagram</h4>
+                            <div className="diagram-column editor-column">
+                                <div className="column-header">
+                                    <h4>Modify Diagram</h4>
+                                </div>
                                 <textarea
                                     className="code-editor-area"
                                     value={diagrams[activeDiagram].code}
@@ -482,7 +532,6 @@ Generate the final PlantUML code now.`;
                                             [activeDiagram]: { ...prev[activeDiagram], code }
                                         }))
                                     }}
-                                    style={{ height: '350px', marginBottom: '10px', width: '100%', background: '#000', color: '#0f0', fontFamily: 'monospace', padding: '10px' }}
                                 />
                                 <div className="prompt-box">
                                     <input

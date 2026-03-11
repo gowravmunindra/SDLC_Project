@@ -988,20 +988,25 @@ body {
 
 /* ===== SCROLLBAR ===== */
 ::-webkit-scrollbar {
-  width: 10px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-dark);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, var(--primary-600), var(--purple-600));
-  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  border: 2px solid transparent;
+  background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, var(--primary-700), var(--purple-700));
+  background: rgba(255, 255, 255, 0.2);
+  border: 2px solid transparent;
+  background-clip: content-box;
 }
 
 /* ===== AGENT WORKSPACE ===== */
@@ -1015,6 +1020,7 @@ body {
   z-index: 3000;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   animation: slideInRight 0.4s ease;
 }
 
@@ -1034,9 +1040,12 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 32px 40px;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(168, 85, 247, 0.1));
+  padding: 16px 32px;
+  background: var(--bg-dark);
   border-bottom: 1px solid var(--border-color);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+  flex-shrink: 0;
 }
 
 .agent-title-section {
@@ -1061,14 +1070,14 @@ body {
 }
 
 .agent-title-section h2 {
-  font-size: 32px;
+  font-size: 24px;
   font-weight: 800;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 
 .agent-title-section p {
   color: var(--text-secondary);
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .close-agent {

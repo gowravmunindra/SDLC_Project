@@ -63,12 +63,41 @@ export const cleanPlantUML = (code) => {
         if (lowerL === '@startuml' && finalLines.length > 0) continue;
         if (lowerL === '@enduml' && lines.indexOf(line) < lines.length - 1) continue;
 
-        // Clean common AI artifacts
+        // Clean common AI artifacts & Unicode Arrows
         l = l
             .replace(/\/\//g, "'") // Fix C-style comments
             .replace(/[•●■◆]/g, '-') // Fix bullets
+            .replace(/[→➔➛➜➝➞➟➠]/g, '->') // Unicode single arrows
+            .replace(/[⟶⟹]/g, '-->') // Unicode long arrows
+            .replace(/⟹/g, '==>') // Double arrows
+            .replace(/..>/g, '-->') // Fix invalid dependency dots/arrows in wrong contexts
             .replace(/-\s+>/g, '->') // Fix broken arrows
             .replace(/--\s+>/g, '-->');
+        
+        // Fix weirdly spaced state transitions
+        if (l.includes('[*]')) {
+            l = l.replace(/\[ \* \]/g, '[*]').replace(/->/g, '-->');
+        }
+
+        // Match lines that are just a single label/word with no arrows, quotes, or keywords
+        const plainWordMatch = l.match(/^([\w\d_-]+)$/i);
+        if (plainWordMatch && finalLines.length < 10) {
+            const word = plainWordMatch[1].toLowerCase();
+            const commonKeywords = ['start', 'stop', 'end', 'title', 'caption', 'header', 'footer', 'skinparam', 'allowmixing', 'left', 'top', 'bottom', 'right'];
+            // If it's a single word at the top and not a structural keyword, it's likely a broken title
+            if (!commonKeywords.includes(word)) {
+                continue; 
+            }
+        }
+
+        // NEW: Force-filter non-structural lines at the top to prevent "Assumed diagram type: sequence"
+        if (finalLines.length < 15 && !l.includes('->') && !l.includes('--') && !l.includes(':') && !l.includes('{') && !l.includes('}') && !l.includes('"') && !l.includes('[*]')) {
+             const knownKeywords = ['start', 'stop', 'end', 'title', 'caption', 'header', 'footer', 'skinparam', 'actor', 'participant', 'node', 'package', 'database', 'cloud', 'component', 'class', 'interface', 'enum', 'state', 'usecase', 'if', 'else', 'endif', 'while', 'endwhile', 'left', 'right', 'top', 'bottom'];
+             const firstWord = l.toLowerCase().split(/\s+/)[0];
+             if (!knownKeywords.includes(firstWord)) {
+                 continue; // Skip lines that aren't keywords and aren't structural
+             }
+        }
 
         // De-duplicate definitions (AI often repeats its prompt instructions)
         const defMatch = l.match(/^(actor|participant|node|package|database|cloud|component|class|interface|enum|boundary|control|entity|queue|collections|state|usecase)\s+("[^"]+"|\w+)/i);
