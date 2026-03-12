@@ -1,188 +1,101 @@
-# SDLC Platform Backend API
+# SDLC Platform - Backend API ⚙️
 
-RESTful API for SDLC Platform with MongoDB database and JWT authentication.
+> **The high-performance orchestration layer for AI-driven software development.**
 
-## Tech Stack
+This API handles project persistence, user authentication, and serves as the bridge to **Mistral AI** for intelligent code and document generation.
 
-- **Node.js** + **Express** - Server framework
-- **MongoDB** + **Mongoose** - Database
-- **JWT** - Authentication
-- **Bcrypt** - Password hashing
-- **CORS** - Cross-origin support
+---
 
-## Setup
+## 🚀 Key Features
 
-### 1. Install Dependencies
-```bash
-npm install
-```
+- **Expert Generation Service**: Specialized logic in `vibeCodingService` and `developmentController` using role-based prompt blueprints.
+- **Mistral AI Integration**: Leverages `mistral-large-latest` with senior-architect system prompts.
+- **Security-First**: 
+  - `helmet` for secure HTTP headers.
+  - `morgan` for detailed request logging.
+  - `bcryptjs` for industry-standard password hashing.
+  - `JWT` for stateless session management.
+- **Robust Persistence**: MongoDB/Mongoose integration with lean schema design for SDLC artifacts.
 
-### 2. Configure Environment
-Create `.env` file or update existing one:
-```env
-PORT=5000
-MONGODB_URI=mongodb://localhost:27017/sdlc_platform
-JWT_SECRET=your_secret_key
-JWT_EXPIRE=7d
-NODE_ENV=development
-```
+---
 
-### 3. Set Up MongoDB
+## 🛠️ Technology Stack
 
-**Option A: MongoDB Atlas (Cloud - Recommended)**
-1. Create free account at https://mongodb.com/atlas
-2. Create cluster
-3. Get connection string
-4. Update `MONGODB_URI` in `.env`
+- **Runtime**: Node.js 18+
+- **Framework**: Express 4.21
+- **Database**: MongoDB (via Mongoose 8.x)
+- **AI Integration**: Mistral AI REST API
+- **Middleware**: CORS, Helmet, Morgan, Express-Validator
 
-**Option B: Local MongoDB**
-1. Install MongoDB Community Edition
-2. Start MongoDB service
-3. Use default `MONGODB_URI`
+---
 
-### 4. Start Server
-
-**Development:**
-```bash
-npm run dev
-```
-
-**Production:**
-```bash
-npm start
-```
-
-Server will run on http://localhost:5000
-
-## API Endpoints
+## 📦 API Endpoints
 
 ### Authentication
-```
-POST   /api/auth/register    - Register new user
-POST   /api/auth/login       - Login user
-GET    /api/auth/me          - Get current user (protected)
-```
+- `POST /api/auth/register` - New user signup.
+- `POST /api/auth/login` - Authenticate and get JWT.
+- `GET /api/auth/me` - Get current session info.
 
-### Projects
-```
-GET    /api/projects         - Get all user projects (protected)
-POST   /api/projects         - Create project (protected)
-GET    /api/projects/:id     - Get single project (protected)
-PUT    /api/projects/:id     - Update project (protected)
-DELETE /api/projects/:id     - Delete project (protected)
-```
+### Project Management
+- `GET /api/projects` - List user projects.
+- `POST /api/projects` - Initialize a new project.
+- `GET /api/projects/:id` - Get full project details including requirements/design.
+- `PUT /api/projects/:id/development` - Persist development-phase code and structure.
 
-### SDLC Phases
-```
-POST   /api/projects/:id/requirements   - Save requirements (protected)
-POST   /api/projects/:id/design         - Save design (protected)
-POST   /api/projects/:id/development    - Save development (protected)
-POST   /api/projects/:id/testing        - Save testing (protected)
-```
+### Development Engine (Vibe Coding)
+- `POST /api/development/generate-tech-stack` - Proposes 2 modern stacks based on description.
+- `POST /api/development/generate-structure` - Generates folder blueprints.
+- `POST /api/development/generate-code` - Generates high-quality, runnable file content.
+- `POST /api/vibe-coding/generate-project` - One-click full repository generation.
 
-## Testing
+---
 
-### Health Check
-```bash
-curl http://localhost:5000/api/health
-```
-
-### Register User
-```bash
-curl -X POST http://localhost:5000/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Test User","email":"test@example.com","password":"password123"}'
-```
-
-### Login
-```bash
-curl -X POST http://localhost:5000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","password":"password123"}'
-```
-
-## Project Structure
+## 📂 Project Structure
 
 ```
 backend/
 ├── src/
-│   ├── config/
-│   │   └── db.js              # MongoDB connection
-│   ├── models/
-│   │   ├── User.js            # User schema
-│   │   └── Project.js         # Project schema
-│   ├── controllers/
-│   │   ├── authController.js  # Auth logic
-│   │   └── projectController.js # Project logic
-│   ├── routes/
-│   │   ├── authRoutes.js      # Auth endpoints
-│   │   └── projectRoutes.js   # Project endpoints
-│   ├── middleware/
-│   │   ├── auth.js            # JWT verification
-│   │   └── errorHandler.js    # Error handling
-│   └── server.js              # Entry point
-├── .env                        # Environment variables
-├── .gitignore
-├── package.json
-└── README.md
+│   ├── config/             # DB & API configurations
+│   ├── controllers/        # Logical handlers (Phase-specific)
+│   ├── middleware/         # Auth, Security, Error Handlers
+│   ├── models/             # Mongoose Schemas (User, Project)
+│   ├── routes/             # Express Route Definitions
+│   ├── services/           # External API Clients (Mistral, OpenAI)
+│   └── server.js           # Entry Point (Helmet, Morgan, Express)
+├── .env.example            # Environment template
+└── package.json            # Pinned professional dependencies
 ```
 
-## Security Features
+---
 
-- ✅ Password hashing with bcrypt
-- ✅ JWT token authentication
-- ✅ Protected routes
-- ✅ Input validation
-- ✅ CORS configuration
-- ✅ Environment variables
+## 🔧 Setup & Development
 
-## Database Schema
+1. **Install Dependencies**:
+   ```bash
+   npm install
+   ```
 
-### Users Collection
-```javascript
-{
-  _id: ObjectId,
-  name: String,
-  email: String (unique),
-  password: String (hashed),
-  createdAt: Date,
-  updatedAt: Date
-}
-```
+2. **Environment Configuration**:
+   Copy `.env.example` to `.env` and fill in:
+   - `MISTRAL_API_KEY`: Your Mistral developer key.
+   - `MONGODB_URI`: Connection string.
+   - `JWT_SECRET`: Random secure string.
 
-### Projects Collection
-```javascript
-{
-  _id: ObjectId,
-  userId: ObjectId (ref: User),
-  name: String,
-  description: String,
-  status: String,
-  requirements: {...},
-  design: {...},
-  development: {...},
-  testing: {...},
-  createdAt: Date,
-  updatedAt: Date
-}
-```
+3. **Run Server**:
+   ```bash
+   npm run dev    # Development mode (nodemon)
+   npm start      # Production mode
+   ```
 
-## Development
+---
 
-- `npm run dev` - Start with nodemon (auto-reload)
-- `npm start` - Start without auto-reload
+## 🛡️ Security Standards
 
-## Deployment
+- **Input Sanitization**: Controllers use `express-validator` to ensure clean inputs.
+- **Error Handling**: A global `errorHandler` middleware hides stack traces in production.
+- **AI Sandboxing**: Prompt engineers ensure AI-generated code doesn't leak secrets or use deprecated libraries.
 
-Can be deployed to:
-- **Heroku**
-- **Render**
-- **Railway**
-- **DigitalOcean App Platform**
+---
 
-MongoDB can be hosted on:
-- **MongoDB Atlas** (Free 512MB)
-
-## License
-
-ISC
+## 📄 License
+MIT

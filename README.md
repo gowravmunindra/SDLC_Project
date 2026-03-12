@@ -1,215 +1,110 @@
-# AI-Enhanced SDLC Platform - Recent Fixes & Updates
+# AI-Enhanced SDLC Platform 🚀
 
-## Latest Fixes (February 14, 2026)
+> **Transforming Software Concepts into Production-Ready code via Advanced AI Orchestration.**
 
-### 1. Data Persistence Issue - FIXED ✅
-
-**Problem:** Requirements, Design, Development, and Testing data were not being saved/loaded properly. Pages appeared empty when reopening projects.
-
-**Root Cause:** All agent components were not loading existing data from the database on mount.
-
-**Solution:**
-- Added `useEffect` hooks to load data from `currentProject` in all agents
-- Changed from localStorage to database persistence
-- Data now properly loads when reopening projects
-
-**Files Modified:**
-- `frontend/src/components/RequirementsAgent.jsx`
-- `frontend/src/components/DesignAgent.jsx`
-- `frontend/src/components/DevelopmentAgent.jsx`
-- `frontend/src/components/TestingAgent.jsx`
-
-### 2. JSON Parsing Errors - FIXED ✅
-
-**Problem:** Backend crashed with "Unterminated string in JSON" errors when generating requirements.
-
-**Root Cause:** Local LLM generates incomplete/malformed JSON due to token limits.
-
-**Solution:**
-Enhanced `backend/src/services/llmService.js` with 4-level error recovery:
-1. Better prompting with explicit JSON instructions
-2. Advanced cleaning (remove markdown, extract JSON)
-3. Fix unterminated strings and missing braces
-4. Fallback to valid empty structure
-
-**Result:** No more crashes, graceful error handling
+The AI-Enhanced SDLC Platform is a professional-grade development environment that automates the entire Software Development Life Cycle. It leverages **Mistral Large** AI to guide you from initial project requirements to fully functional, high-quality codebases and test suites.
 
 ---
 
-## How to Use the Platform
+## 🌟 Core Features
 
-### Starting the Application
-
-1. **Start Backend:**
-   ```bash
-   cd backend
-   npm start
-   ```
-
-2. **Start Frontend:**
-   ```bash
-   cd frontend
-   npm run dev
-   ```
-
-3. **Access:** Open browser to `http://localhost:5173`
-
-### Creating a Project
-
-1. Login/Register
-2. Click "New Project"
-3. Enter project name and description
-4. Click through each phase:
-   - **Requirements** - Generate or import IEEE SRS
-   - **Design** - Generate architecture and diagrams
-   - **Development** - Get tech stack and code snippets
-   - **Testing** - Generate test cases and strategies
-
-### Data Persistence
-
-- All data is automatically saved to MongoDB
-- You can close and reopen projects without losing data
-- Data syncs across devices (same user account)
+- **Mistral-Powered Logic**: High-fidelity AI generation for SRS, architecture, code, and tests.
+- **6 Specialized SDLC Agents**:
+  - 📋 **Requirements Analyst**: Generates IEEE-standard SRS documents.
+  - 🎨 **System Architect**: Designs 3-layer architecture and UML diagrams.
+  - 💻 **Development Engine**: Professional folder structures and runnable code snippets.
+  - 🧪 **Testing & QA**: Comprehensive test plans and matrix-based validation.
+  - ⚡ **Vibe Coding Agent**: Modern "One-Click" generation for Full-Stack, Frontend, or Backend projects.
+  - 🔍 **Consistency Validator**: Ensures architectural alignment across all phases.
+- **Vibe-Coding (Cursor/Lovable Grade)**: Generates projects with production-level standards (MVC, Clean Code, Security, and Error Handling).
+- **Persistent Progress**: Built on MongoDB, allowing you to resume any project at any phase.
 
 ---
 
-## Technical Details
+## ⚡ Quick Start
 
-### Architecture
-- **Frontend:** React + Vite
-- **Backend:** Node.js + Express
-- **Database:** MongoDB
-- **AI:** Local Qwen2.5-Coder model (1.5B)
+### 1. Prerequisites
+- **Node.js** (v18 or higher)
+- **MongoDB** (Local or Atlas)
+- **Mistral API Key** (Get one at [console.mistral.ai](https://console.mistral.ai))
 
-### API Endpoints
-- `POST /api/projects/:id/requirements` - Save requirements
-- `POST /api/projects/:id/design` - Save design
-- `POST /api/projects/:id/development` - Save development
-- `POST /api/projects/:id/testing` - Save testing
-- `GET /api/projects/:id` - Get project with all phases
+### 2. Installation
 
-### Environment Variables
+```bash
+# Clone the repository
+git clone <repository-url>
+cd AI-Enhanced-SDLC-New-2
 
-**Backend (.env):**
+# Install Backend Dependencies
+cd backend
+npm install
+
+# Install Frontend Dependencies
+cd ../frontend
+npm install
 ```
-MONGODB_URI=your_mongodb_connection_string
-JWT_SECRET=your_jwt_secret
+
+### 3. Configuration
+Create a `.env` file in the `backend` folder:
+```env
 PORT=5000
+MONGODB_URI=mongodb://localhost:27017/sdlc_project
+MISTRAL_API_KEY=your_mistral_api_key_here
+JWT_SECRET=your_secret_key_here
+NODE_ENV=development
 ```
 
-**Frontend (.env):**
+### 4. Running the Platform
+
+**Start the Backend:**
+```bash
+cd backend
+npm run dev
 ```
-VITE_API_URL=http://localhost:5000/api
+
+**Start the Frontend:**
+```bash
+cd frontend
+npm run dev
+```
+
+The platform will be available at `http://localhost:5173`.
+
+---
+
+## 🏗️ Technical Architecture
+
+- **Frontend**: React 18, Vite 5, Axios, CSS3 (Modern Glassmorphism Design).
+- **Backend**: Node.js, Express, MongoDB, Mongoose, JWT Auth.
+- **Security**: Helmet headers, Morgan logging, Bcrypt hashing.
+- **AI Engine**: Mistral AI (Mistral Large) via customized prompt blueprints.
+
+---
+
+## 📁 Repository Structure
+
+```
+.
+├── backend/            # Express API, Mistral Integration, & DB Models
+├── frontend/           # React Application & SDLC Agents UI
+└── README.md           # This file
 ```
 
 ---
 
-## Troubleshooting
+## 📋 Latest Updates & Fixes (March 2026)
 
-### Requirements Page is Empty
-**Fixed!** Make sure you've restarted both frontend and backend after the latest updates.
-
-### JSON Parsing Errors
-**Fixed!** The backend now handles malformed JSON gracefully. Check backend logs for details.
-
-### Backend Won't Start
-- Ensure MongoDB is running
-- Check `.env` file exists with correct values
-- Run `npm install` in backend directory
-
-### Frontend Won't Start
-- Run `npm install` in frontend directory
-- Check VITE_API_URL in `.env`
+- **Vibe Coding Upgrade**: Added mode-specific blueprints (Frontend Only / Backend Only / Full Stack).
+- **Expert Prompting**: System instructions upgraded to "Senior Architect" standards for cleaner code.
+- **Security Hardening**: Integrated `helmet` and `morgan` for production-level server safety.
+- **Deterministic Dependencies**: Forced pinned versions (React 18.2, Express 4.18) to ensure generated projects are immediately runnable.
+- **Context-Aware Generation**: AI now reads the full project description and UI diagrams before writing a single line of code.
 
 ---
 
-## Performance Notes
-
-### LLM Response Times (OPTIMIZED)
-- Requirements: ~15-30 seconds (was 10 minutes)
-- Design diagrams: ~10-20 seconds per diagram
-- Development plan: ~20-30 seconds
-- Testing plan: ~20-30 seconds
-
-### Speed Optimizations Applied
-- **Simplified prompts** - Reduced from 500+ to 50-100 tokens
-- **Reduced context size** - 512 tokens (was 1024)
-- **Lower maxTokens** - 100-300 tokens (was 150-500)
-- **Truncated inputs** - Only first 300 chars of project description
-- **Minimal JSON examples** - Removed verbose instructions
-
-### Model Settings
-- Context size: 512 tokens
-- Max tokens: 100 (text), 300 (JSON)
-- Temperature: 0.1 (consistent output)
-- CPU threads: 12
-- Batch size: 128
+## 📄 License
+Licensed under the [MIT License](LICENSE).
 
 ---
 
-## Known Limitations
-
-1. **Local LLM Quality:** Small model may generate basic requirements. You can edit/enhance them.
-2. **Diagram Generation:** Some complex diagrams may need manual refinement.
-3. **Token Limits:** Very long project descriptions may be truncated.
-
----
-
-## Future Enhancements
-
-- [ ] Support for larger LLM models
-- [ ] Real-time collaboration
-- [ ] Export to PDF/Word
-- [ ] Integration with GitHub
-- [ ] Custom templates
-- [ ] AI model selection
-
----
-
-## Support
-
-For issues or questions:
-1. Check backend console logs
-2. Check browser console (F12)
-3. Verify MongoDB connection
-4. Ensure all dependencies are installed
-
----
-
-**Last Updated:** February 14, 2026
-**Version:** 2.0
-
-
-### 3. Design Phase Speed Fix (Feb 14, 2026)
-
-**Problem:** Design phase took 10+ minutes
-**Solution:** 
-- Disabled auto-diagram generation (now manual)
-- Added 10-second timeout to architecture generation
-- Diagrams generate on-demand only
-
-**Result:** Design phase completes in 10-30 seconds
-
-### 4. Blank Page After Requirements Save - FIXED ✅
-
-**Problem:** After clicking "Complete & Save" in Requirements page, the Design page showed a completely blank screen with only the header visible.
-
-**Root Cause:** The DesignAgent component required both `step === 'architecture'` AND `architecture` data to exist before rendering. Since architecture is generated asynchronously in the background, the page would render with nothing visible while waiting for the data.
-
-**Solution:**
-- Changed conditional rendering to always show content when on architecture step
-- Added loading state with spinner and message when architecture is being generated
-- Added safety timeout (2 seconds) to prevent infinite loading state
-- Fixed project context refresh to ensure requirements data is fully loaded after save
-
-**Files Modified:**
-- `frontend/src/components/DesignAgent.jsx` - Added conditional loading state
-- `frontend/src/components/RequirementsAgent.jsx` - Added project refresh after save
-
-**Result:** Design page now shows either architecture content immediately OR a loading spinner with "Generating system architecture..." message. No more blank pages!
-
----
-
-**Last Updated:** February 14, 2026
-**Version:** 2.1
-
+**Built with ❤️ for the Modern Developer.**
