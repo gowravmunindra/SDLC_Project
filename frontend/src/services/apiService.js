@@ -67,13 +67,13 @@ const apiService = {
         if (!projectId) return Promise.reject(new Error("Project ID is required"));
         return api.post('/development/generate-tech-stack', { projectId });
     },
-    generateStructure: (projectId, techStack, generateType) => {
-        if (!projectId) return Promise.reject(new Error("Project ID is required"));
-        return api.post('/development/generate-structure', { projectId, techStack, generateType });
+    generateStructure: (projectId, techStack, generateType, isRegenerating = false) => {
+        if (!projectId) return Promise.reject(new Error('Project ID is required'));
+        return api.post('/development/generate-structure', { projectId, techStack, generateType, isRegenerating });
     },
-    generateCode: (projectId, filePath, fileDescription, techStack, codeType, diagrams, fullStructure) => {
-        if (!projectId) return Promise.reject(new Error("Project ID is required"));
-        return api.post('/development/generate-code', { projectId, filePath, fileDescription, techStack, codeType, diagrams, fullStructure });
+    generateCode: (projectId, filePath, fileDescription, techStack, codeType, diagrams, fullStructure, isRegenerating = false) => {
+        if (!projectId) return Promise.reject(new Error('Project ID is required'));
+        return api.post('/development/generate-code', { projectId, filePath, fileDescription, techStack, codeType, diagrams, fullStructure, isRegenerating });
     },
 
     // Testing Phase

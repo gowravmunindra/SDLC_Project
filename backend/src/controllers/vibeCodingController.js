@@ -10,13 +10,26 @@ exports.generateProject = async (req, res) => {
     const { projectId, userPrompt } = req.body;
     if (!userPrompt) return res.status(400).json({ success: false, message: 'Prompt required' });
 
-    const result = await vibeCodingService.generateProject(userPrompt);
+    // Build rich project context from DB if available
+    let projectContext = '';
+    if (isValidObjectId(projectId)) {
+      const project = await Project.findById(projectId).lean();
+      if (project) {
+        const reqs = project.requirements?.functionalRequirements?.slice(0, 6).join('; ') || '';
+        projectContext = [
+          project.description ? `Description: ${project.description}` : '',
+          reqs ? `Key requirements: ${reqs}` : ''
+        ].filter(Boolean).join('\n');
+      }
+    }
+
+    const result = await vibeCodingService.generateProject(userPrompt, projectContext);
 
     if (isValidObjectId(projectId)) {
       await Project.findByIdAndUpdate(projectId, {
         'development.structure': result.structure,
         'development.fileCount': result.files.length,
-        'development.codeFiles': [], // Space optimization: don't store all code in DB
+        'development.codeFiles': result.files, // Save the actual code files
         'development.lastPrompt': userPrompt,
         'development.updatedAt': new Date()
       });
@@ -60,7 +73,7 @@ exports.updateProject = async (req, res) => {
       await Project.findByIdAndUpdate(projectId, {
         'development.structure': newStructure,
         'development.fileCount': updatedFiles.length,
-        'development.codeFiles': [], // Space optimization: don't store all code in DB
+        'development.codeFiles': updatedFiles, // Save the actual code files
         'development.lastPrompt': userPrompt,
         'development.updatedAt': new Date()
       });

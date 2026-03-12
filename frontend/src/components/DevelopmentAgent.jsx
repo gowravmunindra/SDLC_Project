@@ -24,9 +24,9 @@ function DevelopmentAgent({ onClose, onComplete }) {
     const [isRegenerating, setIsRegenerating] = useState(false)
 
     const [selectedNode, setSelectedNode] = useState(null)
-    const [codeFiles, setCodeFiles] = useState([]) // [{ path, desc, code, status: 'pending'|'generating'|'done' }]
+    const [codeFiles, setCodeFiles] = useState([])
     const [selectedFileIndex, setSelectedFileIndex] = useState(0)
-    const [selectedCodeType, setSelectedCodeType] = useState('Starter Template')
+    const [selectedCodeType, setSelectedCodeType] = useState('Production Ready') // Default to Production Ready
     const [isCodeGenerating, setIsCodeGenerating] = useState(false)
     const [isTabSwitching, setIsTabSwitching] = useState(false)
     const [countdown, setCountdown] = useState(0)
@@ -34,6 +34,46 @@ function DevelopmentAgent({ onClose, onComplete }) {
     // UI Loading State
     const [loading, setLoading] = useState(false)
     const [loadingMessage, setLoadingMessage] = useState('')
+
+    // Auto-Generate mode state
+    const [isAutoGenerating, setIsAutoGenerating] = useState(false)
+    const [autoGenStep, setAutoGenStep] = useState('') // 'techstack' | 'structure' | 'code'
+
+    // ─── Predefined project templates for one-click generation ──────────────────
+    const QUICK_START_TEMPLATES = [
+        {
+            icon: '🚀',
+            label: 'Full-Stack Web App',
+            desc: 'React frontend + Node.js backend + MongoDB',
+            color: '#6366f1',
+            generateType: 'Both',
+            codeType: 'Production Ready'
+        },
+        {
+            icon: '🎨',
+            label: 'Frontend Only',
+            desc: 'React + Vite + React Router + Styled UI',
+            color: '#06b6d4',
+            generateType: 'Frontend',
+            codeType: 'Production Ready'
+        },
+        {
+            icon: '⚙️',
+            label: 'REST API Backend',
+            desc: 'Node.js + Express + Mongoose + JWT Auth',
+            color: '#10b981',
+            generateType: 'Backend',
+            codeType: 'Production Ready'
+        },
+        {
+            icon: '⚡',
+            label: 'Quick MVP',
+            desc: 'Minimal working app — fast & beginner-friendly',
+            color: '#f59e0b',
+            generateType: 'Both',
+            codeType: 'Starter Template'
+        }
+    ]
 
     // 1. Initial Key Verification & Diagram Check & Persistent Data Load
     useEffect(() => {
@@ -99,12 +139,112 @@ function DevelopmentAgent({ onClose, onComplete }) {
         return required.every(key => diagramsCheck[key])
     }
 
-    const startTechStackPhase = (forceFresh = false) => {
+    const startTechStackPhase = (forceFresh = false, autoMode = false) => {
         if (!forceFresh && !isAllDiagramsReady()) return
-        if (forceFresh || window.confirm("Confirm that all design diagrams are finalized and approved?")) {
+        const proceed = autoMode || forceFresh || window.confirm("Confirm that all design diagrams are finalized and approved?")
+        if (proceed) {
             if (forceFresh) setIsRegenerating(true)
             setStep('techstack')
-            generateTechStack()
+            generateTechStack(autoMode)
+        }
+    }
+
+    // ── One-click auto-generation pipeline ──────────────────────────────────────
+    const handleQuickStart = async (template) => {
+        if (!apiKeyStatus.valid) {
+            alert('Please configure your Mistral API Key in the backend .env file first.')
+            return
+        }
+
+        setIsAutoGenerating(true)
+        setIsRegenerating(true)
+        setGenerateType(template.generateType)
+        setSelectedCodeType(template.codeType)
+
+        // Reset all prior state
+        setTechStackOptions([])
+        setSelectedStack(null)
+        setIsStackConfirmed(false)
+        setStructure(null)
+        setIsStructureConfirmed(false)
+        setCodeFiles([])
+        setSelectedFileIndex(0)
+
+        try {
+            // ─ Step 1: Generate tech stack ──────────────────────────────────
+            setAutoGenStep('techstack')
+            setStep('techstack')
+            setLoading(true)
+            setLoadingMessage(`⚙️ Step 1/3 — Selecting best tech stack for "${template.label}"...`)
+
+            const stackRes = await apiService.generateTechStack(currentProject._id)
+            if (!stackRes.data.success) throw new Error('Tech stack generation failed')
+
+            const options = stackRes.data.data.options
+            setTechStackOptions(options)
+            const chosenStack = options[0] // Auto-select the first (recommended) stack
+            setSelectedStack(chosenStack)
+            setIsStackConfirmed(true)
+            setLoading(false)
+
+            // ─ Step 2: Generate folder structure ────────────────────────────
+            setAutoGenStep('structure')
+            setStep('structure')
+            setLoading(true)
+            setLoadingMessage(`📁 Step 2/3 — Designing project structure for "${template.generateType}" app...`)
+
+            const structRes = await apiService.generateStructure(
+                currentProject._id,
+                chosenStack,
+                template.generateType,
+                true // isRegenerating = true for fresh, clean output
+            )
+            if (!structRes.data.success) throw new Error('Structure generation failed')
+
+            const generatedStructure = structRes.data.data.structure
+            setStructure(generatedStructure)
+            setIsStructureConfirmed(true)
+            setLoading(false)
+
+            // ─ Step 3: Flatten structure → build file list ──────────────────
+            const fileList = []
+            const traverse = (node, path = '') => {
+                const currentPath = path ? (path === node.name ? path : `${path}/${node.name}`) : node.name
+                if (node.type === 'file') {
+                    fileList.push({ path: currentPath, desc: node.description || node.name, code: '', status: 'pending' })
+                } else if (node.children) {
+                    const sorted = [...node.children].sort((a, b) => (a.type === 'folder' ? -1 : 1))
+                    sorted.forEach(child => traverse(child, currentPath))
+                }
+            }
+            traverse(generatedStructure)
+            setCodeFiles(fileList)
+
+            // Auto-persist the structure
+            try {
+                await apiService.saveDevelopment(currentProject._id, {
+                    techStack: chosenStack,
+                    structure: generatedStructure,
+                    codeFiles: fileList.map(f => ({ path: f.path, code: f.code })),
+                    completedAt: null
+                })
+            } catch (e) { console.warn('Auto-save failed:', e) }
+
+            // ─ Step 4: Generate all code files ──────────────────────────────
+            setAutoGenStep('code')
+            setStep('code')
+            setLoading(false)
+
+            // Kick off code generation automatically
+            await runCodeGeneration(fileList, chosenStack, template.codeType, generatedStructure, true)
+
+        } catch (err) {
+            console.error('[QuickStart] Error:', err)
+            setLoading(false)
+            alert(`❌ Auto-generation failed at step "${autoGenStep}": ${err.message}\n\nYou can continue manually from the current tab.`)
+        } finally {
+            setIsAutoGenerating(false)
+            setAutoGenStep('')
         }
     }
 
@@ -270,20 +410,19 @@ function DevelopmentAgent({ onClose, onComplete }) {
     }
 
     const startCodeGeneration = async () => {
+        await runCodeGeneration(codeFiles, selectedStack, selectedCodeType, structure, false)
+    }
+
+    // Core generation engine — used by both manual and auto-generation modes
+    const runCodeGeneration = async (filesToGenerate, stack, codeType, projectStructure, autoMode = false) => {
         setIsCodeGenerating(true)
-        const updatedFiles = [...codeFiles]
+        const updatedFiles = [...filesToGenerate]
 
         for (let i = 0; i < updatedFiles.length; i++) {
             const file = updatedFiles[i]
             if (file.status === 'done') continue
+            if (file.status === 'error') file.status = 'pending'
 
-            // Clear error status if retrying
-            if (file.status === 'error') {
-                file.status = 'pending'
-            }
-
-            // PACING: 26s delay required for external free API rate limits
-            // Only delay if we are actually starting a generation (not skipping done)
             if (i > 0 && updatedFiles[i - 1].status === 'done') {
                 setCountdown(26)
                 await new Promise(r => setTimeout(r, 26000))
@@ -299,32 +438,30 @@ function DevelopmentAgent({ onClose, onComplete }) {
                     currentProject._id,
                     file.path,
                     file.desc,
-                    selectedStack,
-                    selectedCodeType,
-                    currentProject.design.diagrams,
-                    structure, // Pass the confirmed structure here
-                    isRegenerating // REGENERATION FLAG
+                    stack,
+                    codeType,
+                    currentProject?.design?.diagrams,
+                    projectStructure,
+                    true  // always isRegenerating=true for clean output
                 )
 
                 if (res.data.success) {
-                    let cleanCode = res.data.code;
-                    // Remove markdown blocks if AI included them
+                    let cleanCode = res.data.code
                     if (cleanCode.includes('```')) {
-                        cleanCode = cleanCode.replace(/```[a-z]*\n?/gi, '').replace(/```\n?/gi, '').trim();
+                        cleanCode = cleanCode.replace(/```[a-z]*\n?/gi, '').replace(/```\n?/gi, '').trim()
                     }
-                    file.code = cleanCode;
-                    file.status = 'done';
+                    file.code = cleanCode
+                    file.status = 'done'
                 } else {
                     file.status = 'error'
                 }
             } catch (err) {
                 console.error(err)
                 file.status = 'error'
-                // Handle 429 specifically (though rare on local)
                 if (err.response?.status === 429) {
                     setCountdown(5)
                     await new Promise(r => setTimeout(r, 5000))
-                    i-- // Retry this file
+                    i--
                     continue
                 }
             }
@@ -334,19 +471,62 @@ function DevelopmentAgent({ onClose, onComplete }) {
     }
 
     const handleDownloadZip = async () => {
-        const completedFiles = codeFiles.filter(f => f.code && f.code.length > 0);
+        const completedFiles = codeFiles.filter(f => f.path && f.code && f.code.length > 0);
         if (completedFiles.length === 0) {
             alert("No source code generated yet. Please generate files before downloading.");
             return;
         }
 
-        const zip = new JSZip();
-        completedFiles.forEach(file => {
-            zip.file(file.path, file.code);
-        });
+        try {
+            console.log("[DevelopmentAgent] Generating repository ZIP for", completedFiles.length, "files...");
+            
+            if (!JSZip) {
+                throw new Error("JSZip library not found.");
+            }
 
-        const content = await zip.generateAsync({ type: 'blob' });
-        saveAs(content, `${currentProject?.name?.toLowerCase().replace(/\s+/g, '-') || 'project'}-repository.zip`);
+            const zip = new JSZip();
+            completedFiles.forEach(file => {
+                if (file.path) {
+                    // Sanitize path
+                    const cleanPath = file.path.replace(/^[./\\]+/, '');
+                    
+                    // Safe content conversion
+                    const content = typeof file.code === 'string' ? file.code : JSON.stringify(file.code, null, 2);
+                    
+                    zip.file(cleanPath, content);
+                }
+            });
+
+            const content = await zip.generateAsync({ 
+                type: 'blob',
+                compression: 'DEFLATE',
+                compressionOptions: { level: 6 }
+            });
+
+            console.log(`[DevelopmentAgent] ZIP blob created. Size: ${(content.size / 1024).toFixed(2)} KB`);
+            const fileName = `${currentProject?.name?.toLowerCase().replace(/[^a-z0-9]/gi, '-') || 'project'}-repository.zip`;
+
+            try {
+                // Try saveAs
+                saveAs(content, fileName);
+            } catch (saveError) {
+                console.warn("[DevelopmentAgent] saveAs failed, using fallback", saveError);
+                // Fallback link method
+                const url = URL.createObjectURL(content);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = fileName;
+                document.body.appendChild(link);
+                link.click();
+                setTimeout(() => {
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                }, 100);
+            }
+        } catch (error) {
+            console.error("[DevelopmentAgent] ZIP Generation Error:", error);
+            alert("Failed to create ZIP package: " + error.message);
+        }
     }
 
     const finalizeDevelopment = async (shouldComplete = true) => {
@@ -367,7 +547,7 @@ function DevelopmentAgent({ onClose, onComplete }) {
                 await updateProject(currentProject._id, { status: 'testing' })
                 await refreshCurrentProject()
                 setStep('complete')
-                setTimeout(() => onComplete(devData), 2000)
+                setTimeout(() => onComplete(devData), 5000) // Give more time to click download
             } else {
                 alert('Progress synced successfully!')
             }
@@ -381,8 +561,75 @@ function DevelopmentAgent({ onClose, onComplete }) {
     // Render Components
     const renderValidation = () => (
         <div className="validation-card">
-            <h3>Diagram Validation</h3>
-            <p>Ensure all required design diagrams are generated before starting development.</p>
+
+            {/* ── Quick Start Panel ── */}
+            <div className="quick-start-panel">
+                <div className="qs-header">
+                    <span className="qs-badge">⚡ ONE-CLICK GENERATION</span>
+                    <h3 className="qs-title">Quick Start — Generate Your Entire Project Automatically</h3>
+                    <p className="qs-subtitle">
+                        Select a template to automatically generate tech stack, folder structure,
+                        and all source code files in one go — no manual steps required.
+                    </p>
+                </div>
+
+                <div className="qs-grid">
+                    {QUICK_START_TEMPLATES.map((tpl) => (
+                        <button
+                            key={tpl.label}
+                            className="qs-card"
+                            style={{ '--qs-color': tpl.color }}
+                            onClick={() => handleQuickStart(tpl)}
+                            disabled={isAutoGenerating || !apiKeyStatus.valid}
+                        >
+                            <div className="qs-card-icon">{tpl.icon}</div>
+                            <div className="qs-card-body">
+                                <div className="qs-card-label">{tpl.label}</div>
+                                <div className="qs-card-desc">{tpl.desc}</div>
+                                <div className="qs-card-tags">
+                                    <span className="qs-tag">{tpl.generateType}</span>
+                                    <span className="qs-tag">{tpl.codeType}</span>
+                                </div>
+                            </div>
+                            {isAutoGenerating ? (
+                                <div className="qs-spinner" />
+                            ) : (
+                                <span className="qs-arrow">→</span>
+                            )}
+                        </button>
+                    ))}
+                </div>
+
+                {isAutoGenerating && (
+                    <div className="qs-progress">
+                        <div className="qs-progress-steps">
+                            {['Tech Stack', 'Structure', 'Code Files'].map((s, i) => {
+                                const stepKeys = ['techstack', 'structure', 'code']
+                                const isDone = stepKeys.indexOf(autoGenStep) > i
+                                const isCurrent = stepKeys[i] === autoGenStep
+                                return (
+                                    <div key={s} className={`qs-step ${isDone ? 'done' : ''} ${isCurrent ? 'active' : ''}`}>
+                                        <div className="qs-step-dot">{isDone ? '✓' : i + 1}</div>
+                                        <span>{s}</span>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                        <p className="qs-progress-msg">{loadingMessage || 'Working...'}</p>
+                    </div>
+                )}
+            </div>
+
+            {/* ── Manual Workflow Divider ── */}
+            <div className="qs-divider">
+                <div className="qs-divider-line" />
+                <span>OR USE THE MANUAL WORKFLOW BELOW</span>
+                <div className="qs-divider-line" />
+            </div>
+
+            {/* ── Diagram Checklist ── */}
+            <h3>Design Diagram Validation</h3>
+            <p>Ensure all required design diagrams are generated before starting the manual development flow.</p>
 
             <div className="checklist">
                 {['useCase', 'class', 'sequence', 'activity', 'state', 'component', 'deployment'].map(key => (
@@ -426,7 +673,7 @@ function DevelopmentAgent({ onClose, onComplete }) {
 
             {!isAllDiagramsReady() && (
                 <p style={{ color: 'var(--dev-text-dim)', fontSize: 13, marginTop: 12 }}>
-                    * Suggestion: If diagrams are missing, you can use the <strong>Interpret</strong> option above to generate a professional project based purely on your initial vision.
+                    * Tip: Use the Quick Start templates above to skip the manual workflow entirely.
                 </p>
             )}
         </div>
@@ -471,7 +718,9 @@ function DevelopmentAgent({ onClose, onComplete }) {
         </div>
     )
 
-    const renderStructure = () => (
+    const renderStructure = () => {
+        const project = currentProject
+        return (
         <div className="step-content">
             <div className="step-header">
                 <h3>Project Structure</h3>
@@ -540,7 +789,8 @@ function DevelopmentAgent({ onClose, onComplete }) {
                 </div>
             )}
         </div>
-    )
+        )
+    }
 
     const renderTree = (node, depth = 0) => {
         const isSelected = selectedNode === node

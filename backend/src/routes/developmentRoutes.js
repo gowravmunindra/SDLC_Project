@@ -4,12 +4,14 @@ const {
     verifyApiKey,
     generateTechStack,
     generateStructure,
-    generateCode
+    generateCode,
+    saveDevelopment
 } = require('../controllers/developmentController');
 
-router.get('/verify-key', verifyApiKey);
+router.get('/verify-key',          verifyApiKey);
 router.post('/generate-tech-stack', generateTechStack);
-router.post('/generate-structure', generateStructure);
-router.post('/generate-code', generateCode);
+router.post('/generate-structure',  generateStructure);
+router.post('/generate-code',       generateCode);
+router.put('/save/:projectId',      saveDevelopment);
 
 module.exports = router;
