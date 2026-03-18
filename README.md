@@ -16,7 +16,10 @@ The AI-Enhanced SDLC Platform is a professional-grade development environment th
   - 🧪 **Testing & QA**: Comprehensive test plans and matrix-based validation.
   - ⚡ **Vibe Coding Agent**: Modern "One-Click" generation for Full-Stack, Frontend, or Backend projects.
   - 🔍 **Consistency Validator**: Ensures architectural alignment across all phases.
-- **Vibe-Coding (Cursor/Lovable Grade)**: Generates projects with production-level standards (MVC, Clean Code, Security, and Error Handling).
+- **Vibe-Coding (Hyper-Premium Grade)**: Generates projects with "Stunning" UI standards (Bento Grids, Dark Mode, GSAP Animations, and 6-layer color palettes).
+- **Interactive Design Phase**: 
+  - **AI Diagram Assistant**: Special textarea to modify UML diagrams via AI instructions.
+  - **Diagram Lightbox**: Full-screen interactive viewer with Pan/Zoom and PNG export.
 - **Persistent Progress**: Built on MongoDB, allowing you to resume any project at any phase.
 
 ---
@@ -94,11 +97,11 @@ The platform will be available at `http://localhost:5173`.
 
 ## 📋 Latest Updates & Fixes (March 2026)
 
-- **Vibe Coding Upgrade**: Added mode-specific blueprints (Frontend Only / Backend Only / Full Stack).
-- **Expert Prompting**: System instructions upgraded to "Senior Architect" standards for cleaner code.
-- **Security Hardening**: Integrated `helmet` and `morgan` for production-level server safety.
+- **Hyper-Premium UI Engine**: Vibe Coding now generates 6-layer color palettes, bento-grids, and GSAP-powered motion curves by default.
+- **AI Diagram Assistant**: Added a dedicated "🪄 Magic Wand" assistant to the Design Phase for targeted UML modifications.
+- **Interactive Lightbox**: Restored full-screen diagram viewing with native Mouse-Wheel Zoom and Click-to-Pan capabilities.
+- **Reliable Rendering**: Fixed a critical PlantUML cache collision bug by implementing full-content MD5 hashing for diagrams.
 - **Deterministic Dependencies**: Forced pinned versions (React 18.2, Express 4.18) to ensure generated projects are immediately runnable.
-- **Context-Aware Generation**: AI now reads the full project description and UI diagrams before writing a single line of code.
 
 ---
 

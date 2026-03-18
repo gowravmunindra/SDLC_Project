@@ -8,7 +8,8 @@ This API handles project persistence, user authentication, and serves as the bri
 
 ## 🚀 Key Features
 
-- **Expert Generation Service**: Specialized logic in `vibeCodingService` and `developmentController` using role-based prompt blueprints.
+- **Expert Generation Service**: Specialized logic in `vibeCodingService` with Hyper-Premium SAAS visual mandates.
+- **Reliable Rendering Engine**: Fixed PlantUML server-side cache with full MD5 hashing for collision-free diagrams.
 - **Mistral AI Integration**: Leverages `mistral-large-latest` with senior-architect system prompts.
 - **Security-First**: 
   - `helmet` for secure HTTP headers.
@@ -22,7 +23,7 @@ This API handles project persistence, user authentication, and serves as the bri
 ## 🛠️ Technology Stack
 
 - **Runtime**: Node.js 18+
-- **Framework**: Express 4.21
+- **Framework**: Express 4.x
 - **Database**: MongoDB (via Mongoose 8.x)
 - **AI Integration**: Mistral AI REST API
 - **Middleware**: CORS, Helmet, Morgan, Express-Validator
@@ -43,10 +44,9 @@ This API handles project persistence, user authentication, and serves as the bri
 - `PUT /api/projects/:id/development` - Persist development-phase code and structure.
 
 ### Development Engine (Vibe Coding)
-- `POST /api/development/generate-tech-stack` - Proposes 2 modern stacks based on description.
-- `POST /api/development/generate-structure` - Generates folder blueprints.
-- `POST /api/development/generate-code` - Generates high-quality, runnable file content.
-- `POST /api/vibe-coding/generate-project` - One-click full repository generation.
+- `POST /api/development/generate-tech-stack` - Proposes modern stacks based on description.
+- `POST /api/vibe-coding/generate-project` - One-click full repository generation with SAAS-grade UI.
+- `POST /api/ai/plantuml/render` - Server-side PlantUML rendering (collision-free).
 
 ---
 
@@ -60,7 +60,7 @@ backend/
 │   ├── middleware/         # Auth, Security, Error Handlers
 │   ├── models/             # Mongoose Schemas (User, Project)
 │   ├── routes/             # Express Route Definitions
-│   ├── services/           # External API Clients (Mistral, OpenAI)
+│   ├── services/           # External API Clients (Mistral, PlantUML)
 │   └── server.js           # Entry Point (Helmet, Morgan, Express)
 ├── .env.example            # Environment template
 └── package.json            # Pinned professional dependencies
@@ -84,16 +84,16 @@ backend/
 3. **Run Server**:
    ```bash
    npm run dev    # Development mode (nodemon)
-   npm start      # Production mode
+   npm start      # Production mode (node)
    ```
 
 ---
 
 ## 🛡️ Security Standards
 
-- **Input Sanitization**: Controllers use `express-validator` to ensure clean inputs.
+- **Input Sanitization**: Controllers use validation middleware for clean inputs.
 - **Error Handling**: A global `errorHandler` middleware hides stack traces in production.
-- **AI Sandboxing**: Prompt engineers ensure AI-generated code doesn't leak secrets or use deprecated libraries.
+- **AI Sandboxing**: Prompt engineers ensure AI-generated code is robust and secure.
 
 ---
 
