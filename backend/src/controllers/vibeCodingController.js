@@ -12,29 +12,53 @@ exports.generateProject = async (req, res) => {
 
     // Build rich project context from DB if available
     let projectContext = '';
+    let selectedStack = null;
+    let projectName = '';
+    let projectDescription = '';
+
     if (isValidObjectId(projectId)) {
       const project = await Project.findById(projectId).lean();
       if (project) {
-        const reqs = project.requirements?.functionalRequirements?.slice(0, 6).join('; ') || '';
+        projectName = project.name || '';
+        projectDescription = project.description || '';
+        selectedStack = project.design?.selectedStack || null;
+
+        // Extract up to 10 functional requirements for context
+        const reqs = project.requirements?.functionalRequirements
+          ?.slice(0, 10)
+          .map(r => `- ${r.title}: ${r.description}`)
+          .join('\n') || '';
+
+        const nonFuncReqs = project.requirements?.nonFunctionalRequirements;
+        const nfReqStr = nonFuncReqs
+          ? Object.entries(nonFuncReqs)
+              .map(([cat, items]) => items?.slice(0, 2).map(i => `- [${cat}] ${i.description}`).join('\n'))
+              .filter(Boolean).join('\n')
+          : '';
+
         projectContext = [
-          project.description ? `Description: ${project.description}` : '',
-          reqs ? `Key requirements: ${reqs}` : ''
-        ].filter(Boolean).join('\n');
+          projectName ? `PROJECT NAME: ${projectName}` : '',
+          projectDescription ? `PROJECT DESCRIPTION: ${projectDescription}` : '',
+          reqs ? `FUNCTIONAL REQUIREMENTS:\n${reqs}` : '',
+          nfReqStr ? `NON-FUNCTIONAL REQUIREMENTS:\n${nfReqStr}` : '',
+          selectedStack
+            ? `SELECTED TECH STACK:\n  Name: ${selectedStack.name}\n  Frontend: ${selectedStack.frontend}\n  Backend: ${selectedStack.backend}\n  Database: ${selectedStack.database}`
+            : ''
+        ].filter(Boolean).join('\n\n');
       }
     }
 
-    const result = await vibeCodingService.generateProject(userPrompt, projectContext);
+    const result = await vibeCodingService.generateProject(userPrompt, projectContext, selectedStack);
 
     if (isValidObjectId(projectId)) {
       await Project.findByIdAndUpdate(projectId, {
         'development.structure': result.structure,
         'development.fileCount': result.files.length,
-        'development.codeFiles': result.files, // Save the actual code files
+        'development.codeFiles': result.files,
+        'development.techStack': selectedStack || {},
         'development.lastPrompt': userPrompt,
         'development.updatedAt': new Date()
       });
-
-      // Auto-update progress
       await progressService.updateProjectProgress(projectId);
     }
 
@@ -48,14 +72,23 @@ exports.generateProject = async (req, res) => {
 exports.updateProject = async (req, res) => {
   try {
     const { projectId, userPrompt, currentFiles } = req.body;
-    if (!userPrompt || !currentFiles) return res.status(400).json({ success: false, message: 'Invalid request' });
+    if (!userPrompt || !currentFiles) {
+      return res.status(400).json({ success: false, message: 'Invalid request: userPrompt and currentFiles required' });
+    }
 
-    const updateResult = await vibeCodingService.updateProject(userPrompt, currentFiles);
+    // Fetch the selected stack to keep generation consistent during updates
+    let selectedStack = null;
+    if (isValidObjectId(projectId)) {
+      const project = await Project.findById(projectId).lean();
+      selectedStack = project?.design?.selectedStack || null;
+    }
 
-    // Merge files
+    const updateResult = await vibeCodingService.updateProject(userPrompt, currentFiles, selectedStack);
+
+    // Merge files: apply created/modified/deleted changes onto the existing set
     let updatedFiles = [...currentFiles];
 
-    updateResult.files.forEach(change => {
+    (updateResult.files || []).forEach(change => {
       const index = updatedFiles.findIndex(f => f.path === change.path);
       if (change.action === 'deleted') {
         if (index !== -1) updatedFiles.splice(index, 1);
@@ -66,29 +99,26 @@ exports.updateProject = async (req, res) => {
       }
     });
 
-    // Rebuild structure from the merged file list
+    // Rebuild the folder tree from the merged file list
     const newStructure = vibeCodingService.buildStructureFromFiles(updatedFiles);
 
     if (isValidObjectId(projectId)) {
       await Project.findByIdAndUpdate(projectId, {
         'development.structure': newStructure,
         'development.fileCount': updatedFiles.length,
-        'development.codeFiles': updatedFiles, // Save the actual code files
+        'development.codeFiles': updatedFiles,
         'development.lastPrompt': userPrompt,
         'development.updatedAt': new Date()
       });
-
-      // Auto-update progress
       await progressService.updateProjectProgress(projectId);
     }
-
 
     res.json({
       success: true,
       structure: newStructure,
       files: updatedFiles,
       summary: updateResult.summary,
-      changes: updateResult.files.length
+      changes: (updateResult.files || []).length
     });
   } catch (error) {
     console.error('[VibeCoding] Update Error:', error.message);
@@ -98,7 +128,8 @@ exports.updateProject = async (req, res) => {
 
 exports.verifyApiKey = async (req, res) => {
   const key = process.env.MISTRAL_API_KEY;
-  if (!key || key === '' || key.includes('your_mistral_key')) return res.status(404).json({ success: false });
+  if (!key || key === '' || key.includes('your_mistral_key')) {
+    return res.status(404).json({ success: false, message: 'MISTRAL_API_KEY not configured' });
+  }
   res.json({ success: true });
 };
-

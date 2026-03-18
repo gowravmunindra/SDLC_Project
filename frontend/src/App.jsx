@@ -11,14 +11,16 @@ import RequirementsPage from './pages/RequirementsPage'
 import DesignPage from './pages/DesignPage'
 import DevelopmentPage from './pages/DevelopmentPage'
 import TestingPage from './pages/TestingPage'
+import ErrorBoundary from './components/ErrorBoundary'
 import AIGuide from './components/AIGuide'
 
 function App() {
     return (
-        <Router>
-            <AuthProvider>
-                <ProjectProvider>
-                    <div className="app">
+        <ErrorBoundary>
+            <Router>
+                <AuthProvider>
+                    <ProjectProvider>
+                        <div className="app">
                         <Routes>
                             {/* Public routes */}
                             <Route path="/" element={<HomePage />} />
@@ -52,6 +54,7 @@ function App() {
                 </ProjectProvider>
             </AuthProvider>
         </Router>
+        </ErrorBoundary>
     )
 }
 

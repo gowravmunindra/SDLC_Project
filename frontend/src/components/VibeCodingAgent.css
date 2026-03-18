@@ -476,8 +476,9 @@
     font-size: 24px; font-weight: 700; color: var(--vc-text-primary);
     margin-bottom: 10px; text-align: center;
     background: linear-gradient(135deg, #e6edf3, #a5b4fc);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent;
 }
+
 .vc-welcome-sub {
     font-size: 13px; color: var(--vc-text-secondary); text-align: center;
     max-width: 380px; line-height: 1.6; margin-bottom: 36px;
@@ -708,4 +709,58 @@
 @media (max-width: 900px) {
     .vc-template-grid { grid-template-columns: 1fr; }
     .vc-gen-indicator span:first-of-type { display: none; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   TECH STACK BANNER (welcome screen)
+   ════════════════════════════════════════════════════════════════════════════ */
+.vc-stack-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    max-width: 520px;
+    padding: 12px 16px;
+    border-radius: var(--vc-radius);
+    background: rgba(63, 185, 80, 0.08);
+    border: 1px solid rgba(63, 185, 80, 0.25);
+    margin-bottom: 20px;
+    animation: fadeInScale 0.3s ease;
+}
+.vc-stack-banner--warn {
+    background: rgba(210, 153, 34, 0.08);
+    border-color: rgba(210, 153, 34, 0.25);
+}
+.vc-stack-banner-icon {
+    font-size: 20px;
+    flex-shrink: 0;
+}
+.vc-stack-banner-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--vc-green);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+}
+.vc-stack-banner--warn .vc-stack-banner-title {
+    color: var(--vc-amber);
+}
+.vc-stack-banner-value {
+    font-size: 12px;
+    color: var(--vc-text-secondary);
+    line-height: 1.5;
+}
+.vc-stack-banner-badge {
+    margin-left: auto;
+    flex-shrink: 0;
+    background: rgba(63, 185, 80, 0.15);
+    border: 1px solid rgba(63, 185, 80, 0.3);
+    color: var(--vc-green);
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 20px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
 }

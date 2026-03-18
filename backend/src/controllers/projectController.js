@@ -112,27 +112,41 @@ const deleteProject = async (req, res) => {
 // @access  Private
 const saveRequirements = async (req, res) => {
     try {
-        const project = await Project.findById(req.params.id)
+        const projectId = req.params.id;
+        const project = await Project.findById(projectId);
 
         if (!project) {
-            return res.status(404).json({ message: 'Project not found' })
+            return res.status(404).json({ message: 'Project not found' });
         }
 
         if (project.userId.toString() !== req.user._id.toString()) {
-            return res.status(401).json({ message: 'Not authorized' })
+            return res.status(401).json({ message: 'Not authorized' });
         }
 
-        project.requirements = {
-            ...req.body,
-            completedAt: new Date()
-        }
-        project.status = 'design'
+        const updatedProject = await Project.findByIdAndUpdate(
+            projectId,
+            {
+                $set: {
+                    requirements: {
+                        ...req.body,
+                        completedAt: new Date()
+                    },
+                    status: 'design'
+                }
+            },
+            { new: true, runValidators: true }
+        );
 
-        await project.save()
-        await progressService.updateProjectProgress(project._id)
-        res.json(project)
+        try {
+            await progressService.updateProjectProgress(projectId);
+        } catch (progErr) {
+            console.warn('[projectController] Requirements progress update warning:', progErr.message);
+        }
+
+        res.json(updatedProject);
     } catch (error) {
-        res.status(500).json({ message: error.message })
+        console.error('[projectController] saveRequirements failed:', error);
+        res.status(500).json({ message: error.message });
     }
 }
 
@@ -141,27 +155,43 @@ const saveRequirements = async (req, res) => {
 // @access  Private
 const saveDesign = async (req, res) => {
     try {
-        const project = await Project.findById(req.params.id)
+        const projectId = req.params.id;
+        const project = await Project.findById(projectId);
 
         if (!project) {
-            return res.status(404).json({ message: 'Project not found' })
+            return res.status(404).json({ message: 'Project not found' });
         }
 
         if (project.userId.toString() !== req.user._id.toString()) {
-            return res.status(401).json({ message: 'Not authorized' })
+            return res.status(401).json({ message: 'Not authorized' });
         }
 
-        project.design = {
-            ...req.body,
-            completedAt: new Date()
-        }
-        project.status = 'development'
+        // Use findByIdAndUpdate to bypass some potential sequential save issues
+        const updatedProject = await Project.findByIdAndUpdate(
+            projectId,
+            {
+                $set: {
+                    design: {
+                        ...req.body,
+                        completedAt: new Date()
+                    },
+                    status: 'development'
+                }
+            },
+            { new: true, runValidators: true }
+        );
 
-        await project.save()
-        await progressService.updateProjectProgress(project._id)
-        res.json(project)
+        // Update progress summary in background (or at least separately)
+        try {
+            await progressService.updateProjectProgress(projectId);
+        } catch (progErr) {
+            console.warn('[projectController] Progress update warning (ignoring):', progErr.message);
+        }
+
+        res.json(updatedProject);
     } catch (error) {
-        res.status(500).json({ message: error.message })
+        console.error('[projectController] saveDesign CRITICAL ERROR:', error);
+        res.status(500).json({ message: error.message });
     }
 }
 
@@ -170,27 +200,41 @@ const saveDesign = async (req, res) => {
 // @access  Private
 const saveDevelopment = async (req, res) => {
     try {
-        const project = await Project.findById(req.params.id)
+        const projectId = req.params.id;
+        const project = await Project.findById(projectId);
 
         if (!project) {
-            return res.status(404).json({ message: 'Project not found' })
+            return res.status(404).json({ message: 'Project not found' });
         }
 
         if (project.userId.toString() !== req.user._id.toString()) {
-            return res.status(401).json({ message: 'Not authorized' })
+            return res.status(401).json({ message: 'Not authorized' });
         }
 
-        project.development = {
-            ...req.body,
-            completedAt: new Date()
-        }
-        project.status = 'testing'
+        const updatedProject = await Project.findByIdAndUpdate(
+            projectId,
+            {
+                $set: {
+                    development: {
+                        ...req.body,
+                        completedAt: new Date()
+                    },
+                    status: 'testing'
+                }
+            },
+            { new: true, runValidators: true }
+        );
 
-        await project.save()
-        await progressService.updateProjectProgress(project._id)
-        res.json(project)
+        try {
+            await progressService.updateProjectProgress(projectId);
+        } catch (progErr) {
+            console.warn('[projectController] Development progress update warning:', progErr.message);
+        }
+
+        res.json(updatedProject);
     } catch (error) {
-        res.status(500).json({ message: error.message })
+        console.error('[projectController] saveDevelopment failed:', error);
+        res.status(500).json({ message: error.message });
     }
 }
 
@@ -199,27 +243,41 @@ const saveDevelopment = async (req, res) => {
 // @access  Private
 const saveTesting = async (req, res) => {
     try {
-        const project = await Project.findById(req.params.id)
+        const projectId = req.params.id;
+        const project = await Project.findById(projectId);
 
         if (!project) {
-            return res.status(404).json({ message: 'Project not found' })
+            return res.status(404).json({ message: 'Project not found' });
         }
 
         if (project.userId.toString() !== req.user._id.toString()) {
-            return res.status(401).json({ message: 'Not authorized' })
+            return res.status(401).json({ message: 'Not authorized' });
         }
 
-        project.testing = {
-            ...req.body,
-            completedAt: new Date()
-        }
-        project.status = 'completed'
+        const updatedProject = await Project.findByIdAndUpdate(
+            projectId,
+            {
+                $set: {
+                    testing: {
+                        ...req.body,
+                        completedAt: new Date()
+                    },
+                    status: 'completed'
+                }
+            },
+            { new: true, runValidators: true }
+        );
 
-        await project.save()
-        await progressService.updateProjectProgress(project._id)
-        res.json(project)
+        try {
+            await progressService.updateProjectProgress(projectId);
+        } catch (progErr) {
+            console.warn('[projectController] Testing progress update warning:', progErr.message);
+        }
+
+        res.json(updatedProject);
     } catch (error) {
-        res.status(500).json({ message: error.message })
+        console.error('[projectController] saveTesting failed:', error);
+        res.status(500).json({ message: error.message });
     }
 }
 

@@ -76,13 +76,13 @@ class ProjectProgressService {
             functional_requirements: (project.requirements?.functionalRequirements?.length > 0) ? 'generated' : 'pending',
 
             // Design Phase
-            architecture_design: project.design?.architecture ? 'generated' : 'pending',
-            database_schema: (project.design?.diagrams?.class || project.design?.architecture?.layers?.find(l => l.name?.toLowerCase().includes('db') || l.name?.toLowerCase().includes('database'))) ? 'generated' : 'pending',
-            api_design: (project.design?.diagrams?.sequence || project.design?.architecture?.layers?.find(l => l.name?.toLowerCase().includes('api') || l.name?.toLowerCase().includes('service'))) ? 'generated' : 'pending',
+            architecture_design: (project.design?.diagrams?.component || project.design?.diagrams?.deployment || project.design?.selectedStack) ? 'generated' : 'pending',
+            database_schema: (project.design?.diagrams?.class || project.design?.diagrams?.database || project.design?.completedAt) ? 'generated' : 'pending',
+            api_design: (project.design?.diagrams?.sequence || project.design?.diagrams?.useCase || project.design?.completedAt) ? 'generated' : 'pending',
 
             // Development Phase
             source_code_generation: (project.development?.structure || (project.development?.codeFiles && project.development?.codeFiles.length > 0)) ? 'generated' : 'pending',
-            module_implementation: (project.development?.completedAt || (project.development?.structure && project.development?.codeFiles?.length > 5)) ? 'generated' : 'pending',
+            module_implementation: (project.development?.completedAt || project.status === 'testing' || project.status === 'completed') ? 'generated' : 'pending',
 
             // Testing Phase
             unit_tests: (project.testing?.testCases?.length > 0) ? 'generated' : 'pending',

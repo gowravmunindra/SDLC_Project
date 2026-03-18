@@ -696,7 +696,7 @@ function buildFilePrompt(role, ctx) {
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 File:    ${ctx.filePath}
 Project: ${ctx.projectName}
-Stack:   ${ctx.stackDesc}
+SELECTED TECH STACK: ${ctx.stackDesc}
 ${ctx.diagramSummary ? `\nDESIGN CONTEXT (UML):\n${ctx.diagramSummary}` : ''}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━

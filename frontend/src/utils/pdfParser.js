@@ -1,5 +1,6 @@
 import * as pdfjsLib from 'pdfjs-dist'
-import huggingFaceService from '../services/huggingFaceService'
+import geminiService from '../services/geminiService'
+
 
 // Set up PDF.js worker from node_modules
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -122,7 +123,8 @@ Please extract and structure this data in the following JSON format:
 IMPORTANT: Return ONLY valid JSON. No additional text or explanation. If you cannot find certain sections, return empty arrays for those fields.`
 
     // Use AI to parse the text
-    const parsedData = await huggingFaceService.generateJSON(parsePrompt, 2, forceLocal)
+    const parsedData = await geminiService.generateJSON(parsePrompt, 2, forceLocal)
+
 
     return parsedData
 

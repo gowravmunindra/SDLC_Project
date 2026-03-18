@@ -21,32 +21,35 @@ function Dashboard({ isOpen, onClose }) {
 
     // Check project data for completed phases when current project changes
     useEffect(() => {
-        if (!currentProject) return
-
-        const newPhases = [...phases]
-
-        // Check which phases are completed based on project data
-        if (currentProject.requirements?.completedAt) {
-            newPhases[0].status = 'completed'
-            newPhases[1].locked = false
-            newPhases[1].status = 'ready'
-        }
-        if (currentProject.design?.completedAt) {
-            newPhases[1].status = 'completed'
-            newPhases[2].locked = false
-            newPhases[2].status = 'ready'
-        }
-        if (currentProject.development?.completedAt) {
-            newPhases[2].status = 'completed'
-            newPhases[3].locked = false
-            newPhases[3].status = 'ready'
-        }
-        if (currentProject.testing?.completedAt) {
-            newPhases[3].status = 'completed'
+        if (!currentProject) {
+            setPhases(prev => prev.map(p => ({ ...p, status: 'ready', locked: false })));
+            return;
         }
 
-        setPhases(newPhases)
-    }, [currentProject])
+        setPhases(prev => {
+            return prev.map(phase => {
+                const updated = { ...phase };
+                
+                if (phase.id === 'requirements') {
+                    updated.status = currentProject.requirements?.completedAt ? 'completed' : 'ready';
+                } else if (phase.id === 'design') {
+                    const reqsDone = !!currentProject.requirements?.completedAt;
+                    updated.status = currentProject.design?.completedAt ? 'completed' : (reqsDone ? 'ready' : 'locked');
+                    updated.locked = !reqsDone;
+                } else if (phase.id === 'development') {
+                    const designDone = !!currentProject.design?.completedAt;
+                    updated.status = currentProject.development?.completedAt ? 'completed' : (designDone ? 'ready' : 'locked');
+                    updated.locked = !designDone;
+                } else if (phase.id === 'testing') {
+                    const devDone = !!currentProject.development?.completedAt;
+                    updated.status = currentProject.testing?.completedAt ? 'completed' : (devDone ? 'ready' : 'locked');
+                    updated.locked = !devDone;
+                }
+                
+                return updated;
+            });
+        });
+    }, [currentProject?._id, currentProject?.requirements?.completedAt, currentProject?.design?.completedAt, currentProject?.development?.completedAt, currentProject?.testing?.completedAt])
 
     const handleStartPhase = (phase) => {
         if (phase.locked) return
@@ -81,9 +84,7 @@ function Dashboard({ isOpen, onClose }) {
                         <p>Manage your software development lifecycle</p>
                     </div>
                     <div className="dashboard-header-actions">
-                        {currentProject && (
-                            <ProjectSelector onCreateNew={() => setShowCreateModal(true)} />
-                        )}
+                        <ProjectSelector onCreateNew={() => setShowCreateModal(true)} />
                         <button className="btn-validate" onClick={handleValidateConsistency}>
                             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
                                 <circle cx="10" cy="10" r="7" />
@@ -142,6 +143,30 @@ function Dashboard({ isOpen, onClose }) {
                             </p>
                         </div>
                     </div>
+
+                    {!currentProject && (
+                        <div style={{
+                            background: 'rgba(245, 158, 11, 0.1)',
+                            border: '1px solid rgba(245, 158, 11, 0.3)',
+                            borderRadius: '12px',
+                            padding: '20px',
+                            textAlign: 'center',
+                            marginBottom: '32px'
+                        }}>
+                            <span style={{ fontSize: '32px', display: 'block', marginBottom: '10px' }}>⚠️</span>
+                            <h4 style={{ color: '#f59e0b', marginBottom: '8px' }}>No Project Selected</h4>
+                            <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
+                                Please select an existing project or create a new one to begin the SDLC process.
+                            </p>
+                            <button 
+                                className="btn-primary" 
+                                style={{ marginTop: '15px' }}
+                                onClick={() => setShowCreateModal(true)}
+                            >
+                                + Create New Project
+                            </button>
+                        </div>
+                    )}
 
                     <div className="phase-cards">
                         {phases.map((phase) => (

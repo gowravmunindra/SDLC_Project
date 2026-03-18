@@ -28,7 +28,12 @@ function ProjectSelector({ onCreateNew }) {
         onCreateNew?.()
     }
 
-    if (!currentProject) return null
+    // Safety rendering
+    const renderSafeValue = (val) => {
+        if (!val) return 'Untitled Project';
+        if (typeof val === 'string') return val;
+        return String(val);
+    };
 
     return (
         <div ref={dropdownRef} style={{ position: 'relative' }}>
@@ -58,10 +63,10 @@ function ProjectSelector({ onCreateNew }) {
                 }}
             >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, textAlign: 'left' }}>
-                    <span style={{ fontSize: '16px' }}>🚀</span>
+                    <span style={{ fontSize: '16px' }}>{currentProject ? '🚀' : '📂'}</span>
                     <div style={{ overflow: 'hidden' }}>
                         <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px' }}>
-                            Current Project
+                            {currentProject ? 'Current Project' : 'Select Project'}
                         </div>
                         <div style={{
                             fontSize: '14px',
@@ -70,7 +75,7 @@ function ProjectSelector({ onCreateNew }) {
                             overflow: 'hidden',
                             textOverflow: 'ellipsis'
                         }}>
-                            {currentProject.name}
+                            {currentProject ? renderSafeValue(currentProject.name) : 'Choose a Project...'}
                         </div>
                     </div>
                 </div>
@@ -110,7 +115,7 @@ function ProjectSelector({ onCreateNew }) {
                                     alignItems: 'center',
                                     gap: '12px',
                                     padding: '12px',
-                                    background: project._id === currentProject._id
+                                    background: project._id === currentProject?._id
                                         ? 'rgba(99, 102, 241, 0.1)'
                                         : 'transparent',
                                     border: '1px solid transparent',
@@ -125,7 +130,7 @@ function ProjectSelector({ onCreateNew }) {
                                     e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.3)'
                                 }}
                                 onMouseLeave={(e) => {
-                                    if (project._id !== currentProject._id) {
+                                    if (project._id !== currentProject?._id) {
                                         e.currentTarget.style.background = 'transparent'
                                     }
                                     e.currentTarget.style.borderColor = 'transparent'
@@ -152,7 +157,7 @@ function ProjectSelector({ onCreateNew }) {
                                         {project.status || 'planning'}
                                     </div>
                                 </div>
-                                {project._id === currentProject._id && (
+                                {project._id === currentProject?._id && (
                                     <span style={{ fontSize: '16px', color: 'var(--primary-600)' }}>✓</span>
                                 )}
                             </button>

@@ -12,7 +12,24 @@ function ConsistencyValidator({ onClose }) {
         if (currentProject?._id) {
             performBackendValidation()
         }
-    }, [currentProject])
+    }, [currentProject?._id])
+
+    if (!currentProject) {
+        return (
+            <div className="validator-overlay">
+                <div className="validator-container">
+                    <div className="validator-header">
+                        <h2>Validation Error</h2>
+                        <button className="close-validator" onClick={onClose}>×</button>
+                    </div>
+                    <div className="validator-content centered-state">
+                        <p className="error-message">No project selected for validation.</p>
+                        <button className="btn-primary" onClick={onClose}>Return to Dashboard</button>
+                    </div>
+                </div>
+            </div>
+        )
+    }
 
     const performBackendValidation = async () => {
         setIsValidating(true)

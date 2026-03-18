@@ -104,6 +104,9 @@ function DevelopmentAgent({ onClose, onComplete }) {
             if (dev.techStack) {
                 setSelectedStack(dev.techStack)
                 setIsStackConfirmed(true)
+            } else if (currentProject?.design?.selectedStack) {
+                // SYNC: Autofill the stack chosen in Design Phase
+                setSelectedStack(currentProject.design.selectedStack)
             }
             if (dev.structure) {
                 setStructure(dev.structure)
@@ -123,7 +126,7 @@ function DevelopmentAgent({ onClose, onComplete }) {
                 setStep('techstack')
             }
         }
-    }, [currentProject])
+    }, [currentProject?._id])
 
     // Delay Timer Effect
     useEffect(() => {
@@ -132,6 +135,18 @@ function DevelopmentAgent({ onClose, onComplete }) {
             return () => clearTimeout(timer)
         }
     }, [countdown])
+
+    // Safety helper to prevent "Objects are not valid as a React child"
+    const renderSafeValue = (val) => {
+        if (!val) return 'Not Specified';
+        if (typeof val === 'string') return val;
+        if (typeof val === 'object') {
+            return Object.entries(val)
+                .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
+                .join(', ');
+        }
+        return String(val);
+    };
 
     // Helpers
     const isAllDiagramsReady = () => {
@@ -699,12 +714,12 @@ function DevelopmentAgent({ onClose, onComplete }) {
                                 className={`tech-card ${selectedStack?.name === opt.name ? 'selected' : ''}`}
                                 onClick={() => setSelectedStack(opt)}
                             >
-                                <h3>{opt.name}</h3>
-                                <div className="tech-detail"><span className="tech-label">Frontend:</span> <span>{opt.frontend}</span></div>
-                                <div className="tech-detail"><span className="tech-label">Backend:</span> <span>{opt.backend}</span></div>
-                                <div className="tech-detail"><span className="tech-label">Database:</span> <span>{opt.database}</span></div>
-                                <div className="tech-detail"><span className="tech-label">Auth:</span> <span>{opt.auth}</span></div>
-                                <div className="tech-detail"><span className="tech-label">Deployment:</span> <span>{opt.deployment}</span></div>
+                                <h3>{renderSafeValue(opt.name)}</h3>
+                                <div className="tech-detail"><span className="tech-label">Frontend:</span> <span>{renderSafeValue(opt.frontend)}</span></div>
+                                <div className="tech-detail"><span className="tech-label">Backend:</span> <span>{renderSafeValue(opt.backend)}</span></div>
+                                <div className="tech-detail"><span className="tech-label">Database:</span> <span>{renderSafeValue(opt.database)}</span></div>
+                                <div className="tech-detail"><span className="tech-label">Auth:</span> <span>{renderSafeValue(opt.auth)}</span></div>
+                                <div className="tech-detail"><span className="tech-label">Deployment:</span> <span>{renderSafeValue(opt.deployment)}</span></div>
                             </div>
                         ))}
                     </div>
@@ -897,6 +912,16 @@ function DevelopmentAgent({ onClose, onComplete }) {
     )
 
 
+
+    if (!currentProject) {
+        return (
+            <div className="agent-workspace centered-state">
+                <div className="loading-spinner"></div>
+                <p>Loading project data...</p>
+                <button className="dev-btn dev-btn-secondary" onClick={onClose} style={{ marginTop: '20px' }}>Close</button>
+            </div>
+        )
+    }
 
     return (
         <div className="dev-agent-container">

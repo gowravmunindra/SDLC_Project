@@ -1,10 +1,9 @@
 const mistralService = require('./mistralService');
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PINNED DEPENDENCY CATALOGUE  (verified stable as of early 2025)
-// These are the ONLY versions the AI is allowed to use.
+// DEFAULT PINNED DEPENDENCIES  (fallback when no design-phase stack is set)
 // ─────────────────────────────────────────────────────────────────────────────
-const PINNED = {
+const DEFAULT_PINNED = {
     frontend: {
         dependencies: {
             "react": "^18.2.0",
@@ -36,8 +35,166 @@ const PINNED = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TECH STACK NORMALIZER
+// Maps common names from the Design Phase to concrete dependency blocks.
+// ─────────────────────────────────────────────────────────────────────────────
+function resolveStackDependencies(selectedStack) {
+    if (!selectedStack) return null;
+
+    const fe = (selectedStack.frontend || '').toLowerCase();
+    const be = (selectedStack.backend || '').toLowerCase();
+    const db = (selectedStack.database || '').toLowerCase();
+
+    const frontendDeps = {};
+    const frontendDevDeps = {};
+    const backendDeps = {};
+    const backendDevDeps = { "nodemon": "^3.1.0" };
+
+    // ── Frontend deps ────────────────────────────────────────────────────────
+    if (fe.includes('react') || fe.includes('vite')) {
+        frontendDeps["react"] = "^18.2.0";
+        frontendDeps["react-dom"] = "^18.2.0";
+        frontendDeps["react-router-dom"] = "^6.22.0";
+        frontendDeps["axios"] = "^1.6.7";
+        frontendDevDeps["vite"] = "^5.1.4";
+        frontendDevDeps["@vitejs/plugin-react"] = "^4.2.1";
+    } else if (fe.includes('next')) {
+        frontendDeps["next"] = "^14.1.0";
+        frontendDeps["react"] = "^18.2.0";
+        frontendDeps["react-dom"] = "^18.2.0";
+        frontendDeps["axios"] = "^1.6.7";
+    } else if (fe.includes('vue')) {
+        frontendDeps["vue"] = "^3.4.0";
+        frontendDeps["vue-router"] = "^4.2.5";
+        frontendDeps["axios"] = "^1.6.7";
+        frontendDevDeps["vite"] = "^5.1.4";
+        frontendDevDeps["@vitejs/plugin-vue"] = "^5.0.4";
+    } else if (fe.includes('angular')) {
+        frontendDeps["@angular/core"] = "^17.0.0";
+        frontendDeps["@angular/router"] = "^17.0.0";
+        frontendDeps["@angular/common"] = "^17.0.0";
+        frontendDeps["rxjs"] = "^7.8.0";
+    } else if (fe.includes('svelte')) {
+        frontendDevDeps["svelte"] = "^4.2.0";
+        frontendDevDeps["@sveltejs/vite-plugin-svelte"] = "^3.0.0";
+        frontendDevDeps["vite"] = "^5.1.4";
+    } else {
+        // Generic HTML/CSS/JS — no framework
+        frontendDeps["axios"] = "^1.6.7";
+    }
+
+    // ── Backend deps ─────────────────────────────────────────────────────────
+    if (be.includes('express') || be.includes('node')) {
+        backendDeps["express"] = "^4.18.2";
+        backendDeps["cors"] = "^2.8.5";
+        backendDeps["dotenv"] = "^16.4.5";
+        backendDeps["bcryptjs"] = "^2.4.3";
+        backendDeps["jsonwebtoken"] = "^9.0.2";
+        backendDeps["helmet"] = "^7.1.0";
+        backendDeps["morgan"] = "^1.10.0";
+        backendDeps["express-validator"] = "^7.0.1";
+    } else if (be.includes('fastify')) {
+        backendDeps["fastify"] = "^4.26.0";
+        backendDeps["@fastify/cors"] = "^9.0.0";
+        backendDeps["@fastify/jwt"] = "^8.0.0";
+        backendDeps["dotenv"] = "^16.4.5";
+    } else if (be.includes('django') || be.includes('python')) {
+        // Python stack — indicate to AI
+        backendDeps["django"] = "4.2";
+        backendDeps["djangorestframework"] = "3.15";
+    } else {
+        // Default to Express
+        backendDeps["express"] = "^4.18.2";
+        backendDeps["cors"] = "^2.8.5";
+        backendDeps["dotenv"] = "^16.4.5";
+        backendDeps["bcryptjs"] = "^2.4.3";
+        backendDeps["jsonwebtoken"] = "^9.0.2";
+        backendDeps["helmet"] = "^7.1.0";
+        backendDeps["morgan"] = "^1.10.0";
+    }
+
+    // ── Database deps ────────────────────────────────────────────────────────
+    if (db.includes('mongo')) {
+        backendDeps["mongoose"] = "^8.2.1";
+    } else if (db.includes('postgres') || db.includes('psql')) {
+        backendDeps["pg"] = "^8.11.3";
+        backendDeps["sequelize"] = "^6.37.1";
+    } else if (db.includes('mysql') || db.includes('maria')) {
+        backendDeps["mysql2"] = "^3.9.1";
+        backendDeps["sequelize"] = "^6.37.1";
+    } else if (db.includes('sqlite')) {
+        backendDeps["better-sqlite3"] = "^9.4.3";
+    } else if (db.includes('redis')) {
+        backendDeps["ioredis"] = "^5.3.2";
+    } else if (db.includes('firebase')) {
+        backendDeps["firebase-admin"] = "^12.0.0";
+    } else {
+        // Default to MongoDB
+        backendDeps["mongoose"] = "^8.2.1";
+    }
+
+    return {
+        frontend: {
+            dependencies: frontendDeps,
+            devDependencies: frontendDevDeps,
+            scripts: fe.includes('next')
+                ? { "dev": "next dev", "build": "next build", "start": "next start" }
+                : { "dev": "vite", "build": "vite build", "preview": "vite preview" }
+        },
+        backend: {
+            dependencies: backendDeps,
+            devDependencies: backendDevDeps,
+            scripts: { "start": "node server.js", "dev": "nodemon server.js" }
+        }
+    };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BUILD TECH STACK MANDATE BLOCK (injected into EVERY prompt)
+// ─────────────────────────────────────────────────────────────────────────────
+function buildStackMandate(selectedStack, resolvedDeps) {
+    if (!selectedStack) {
+        return `\nUSING DEFAULT STACK: React 18 + Vite (frontend), Node.js + Express 4 (backend), MongoDB + Mongoose 8.\n`;
+    }
+
+    const fe = selectedStack.frontend || 'React + Vite';
+    const be = selectedStack.backend || 'Node.js + Express';
+    const db = selectedStack.database || 'MongoDB';
+
+    const feDeps = resolvedDeps?.frontend?.dependencies || {};
+    const feDevDeps = resolvedDeps?.frontend?.devDependencies || {};
+    const beDeps = resolvedDeps?.backend?.dependencies || {};
+    const beDevDeps = resolvedDeps?.backend?.devDependencies || {};
+
+    return `
+╔══════════════════════════════════════════════════════════════════════╗
+║                   SELECTED TECH STACK MANDATE                        ║
+║   STRICT: You MUST use ONLY these technologies. No substitutions.    ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+STACK NAME  : ${selectedStack.name || 'Custom'}
+FRONTEND    : ${fe}
+BACKEND     : ${be}
+DATABASE    : ${db}
+
+EXACT PACKAGES TO USE:
+  Frontend dependencies   : ${JSON.stringify(feDeps)}
+  Frontend devDependencies: ${JSON.stringify(feDevDeps)}
+  Backend dependencies    : ${JSON.stringify(beDeps)}
+  Backend devDependencies : ${JSON.stringify(beDevDeps)}
+
+ENFORCEMENT RULES (NON-NEGOTIABLE):
+1. Every package.json MUST use EXACTLY the packages and versions listed above.
+2. You MUST NOT introduce any package not listed in the mandate.
+3. The generated code syntax must match the chosen framework 
+   (e.g., if Vue: use <template>, <script setup>; if Angular: use @Component decorator etc.)
+4. Database connection code must exclusively target: ${db}
+5. If the stack is different from React + Node.js defaults, adjust ALL code patterns accordingly.
+`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SYSTEM-LEVEL CODE GENERATION STANDARDS
-// Injected into every prompt — the AI must obey these in all cases.
 // ─────────────────────────────────────────────────────────────────────────────
 const GENERATION_STANDARDS = `
 ╔══════════════════════════════════════════════════════════════════════╗
@@ -45,80 +202,75 @@ const GENERATION_STANDARDS = `
 ║     Treat every generated project as a real client deliverable       ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
-STANDARD 1 — DEPENDENCY LOCK (NON-NEGOTIABLE):
-  Use ONLY these exact package versions. Any deviation is forbidden:
-
-  FRONTEND (React + Vite):
-    react: ^18.2.0 | react-dom: ^18.2.0 | react-router-dom: ^6.22.0
-    axios: ^1.6.7 | vite: ^5.1.4 | @vitejs/plugin-react: ^4.2.1
-
-  BACKEND (Node.js + Express):
-    express: ^4.18.2 | cors: ^2.8.5 | dotenv: ^16.4.5
-    mongoose: ^8.2.1 | bcryptjs: ^2.4.3 | jsonwebtoken: ^9.0.2
-    helmet: ^7.1.0 | morgan: ^1.10.0 | nodemon: ^3.1.0 (devDep only)
+STANDARD 1 — DEPENDENCY LOCK:
+  Use ONLY packages from the "SELECTED TECH STACK MANDATE" above.
+  If no mandate is given, use the safe defaults listed there.
 
 STANDARD 2 — ZERO TOLERANCE FOR PLACEHOLDERS:
-  The following are STRICTLY FORBIDDEN in any generated file:
+  STRICTLY FORBIDDEN in any generated file:
   ✗ // TODO: implement this
   ✗ // Add your logic here
   ✗ console.log('placeholder')
-  ✗ return null  (as a stub for unimplemented logic)
+  ✗ return null  (as a stub)
   ✗ throw new Error('Not implemented')
   Every function body MUST contain real, working logic.
 
 STANDARD 3 — IMPORT INTEGRITY:
-  Before finalizing, mentally trace EVERY import statement.
-  Every imported path must exist in the generated file list.
-  Use relative paths consistently (e.g., './components/Header' not '../components/Header'
-  unless the depth is correct).
+  Every import path must reference a file that EXISTS in the file list.
+  Use correct relative paths based on folder depth.
 
 STANDARD 4 — ARCHITECTURE DISCIPLINE:
-  Separation of concerns is mandatory:
-  - React components: only UI logic and local state
-  - Services (api.js): all HTTP calls via axios
+  - React components: only UI + local state
+  - services/api.js: all HTTP calls
   - Backend controllers: business logic only
   - Backend routes: routing + middleware only
   - Backend models: schema + static methods only
-  Never mix concerns across layers.
 
 STANDARD 5 — PRODUCTION ENTRY POINTS:
   frontend/index.html      → <div id="root"> + <script type="module" src="/src/main.jsx">
   frontend/src/main.jsx    → ReactDOM.createRoot + <React.StrictMode><App /></React.StrictMode>
-  frontend/vite.config.js  → @vitejs/plugin-react + proxy /api → http://localhost:5000
-  backend/server.js        → dotenv.config() FIRST, then express setup, then mongoose.connect()
+  frontend/vite.config.js  → plugin + proxy /api → http://localhost:5000
+  backend/server.js        → dotenv.config() FIRST, then express/app setup, then DB connect
 
 STANDARD 6 — PROFESSIONAL UI QUALITY:
-  Every React component must:
+  Every React/Vue/Angular component must:
   - Have styled, meaningful UI (not a blank div with text)
-  - Use CSS classes (defined in corresponding .css files)
-  - Handle loading and error states where data fetching is involved
-  - Be interactive where it makes sense (buttons do things, forms submit)
+  - Use CSS classes (defined in matching .css files)
+  - Handle loading and error states
+  - Be interactive (forms submit, buttons do things)
 
 STANDARD 7 — README EXCELLENCE:
-  The README.md must be the first file and must include:
-  1. Project name + 1-paragraph description
-  2. Screenshots section (placeholder for user to add)
-  3. Prerequisites (Node.js ≥18, npm ≥9, MongoDB Atlas or local)
-  4. Quick Start with numbered bash commands for backend AND frontend
-  5. Environment Variables table with Name | Required | Description | Example
-  6. Available API endpoints (for full-stack/backend projects)
-  7. Project folder structure summary
-  8. Common Issues & Solutions (at least 4 entries)
-  9. Tech stack badges or table
+  README.md must include:
+  1. Project name + description
+  2. Prerequisites (runtime versions, database)
+  3. Quick Start: numbered bash commands for backend + frontend
+  4. Environment variables table (Name | Required | Description | Example)
+  5. Available API endpoints (for full-stack/backend)
+  6. Project folder structure
+  7. Common Issues & Solutions (at least 3 entries)
+  8. Tech stack used
 
 STANDARD 8 — STRUCTURED ERROR HANDLING:
-  Backend: every route handler wrapped in try/catch, returns:
-    { "success": true/false, "data": ..., "message": "..." }
-  Frontend: axios calls wrapped with try/catch, errors shown in UI (not just console.log)
+  Backend: try/catch in every route, returns { "success": true/false, "data": ..., "message": "..." }
+  Frontend: axios calls wrapped with try/catch, errors shown in UI
 
-STANDARD 9 — SECURITY BEST PRACTICES:
-  Backend must include: helmet(), cors() with proper options,
-  JWT verification middleware, bcryptjs for passwords,
-  express-validator for input sanitization on auth routes.
+STANDARD 9 — SECURITY:
+  Backend must include: helmet(), cors(), JWT auth middleware, bcryptjs for passwords,
+  input validation on auth routes.
 
 STANDARD 10 — OUTPUT FORMAT:
-  Respond ONLY with the raw JSON object.
-  No markdown fences, no prose explanation, no comments outside of code strings.
+  Respond ONLY with the raw JSON object. No prose, no markdown fences.
+
+STANDARD 11 — HYPER-PREMIUM SAAS DESIGN (MANDATORY):
+  Every UI must be visually STUNNING and follow modern high-end SAAS aesthetics.
+  - Dark Mode by Default: Use a deep charcoal/navy background (#020617 or #030712) with high-contrast text.
+  - Hero Sections: Implement a massive, centered hero with a mesh-gradient background and a glowing primary CTA button.
+  - Bento Grid: Use a "Bento Grid" layout for feature sections (alternating card sizes with rounded corners and subtle borders).
+  - Glassmorphism: Use "backdrop-filter: blur(12px); background: rgba(255, 255, 255, 0.03);" for sidebars and cards.
+  - Neon Glow: Buttons and active states must have a subtle "glow" shadow (box-shadow or drop-shadow).
+  - GSAP/Framer Motion: Use 'power4.out' easing or smooth springs for ALL entrances. Elements must glide, not jump.
+  - 6-Layer Palette: [Main: #6366f1, Secondary: #a855f7, Accent: #10b981, Surface: #0f172a, Muted: #1e293b, Border: #334155].
+  - Border Magic: Use subtle 1px borders with 0.1 opacity for card separation.
 `;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -128,194 +280,239 @@ function detectMode(userPrompt) {
     const p = userPrompt.toLowerCase();
     const fe = ['frontend only', 'react + vite frontend only', 'frontend project',
         'no backend', 'just frontend', 'only frontend', 'react only',
-        'generate a complete react + vite frontend only'];
+        'generate a complete react + vite frontend only', 'frontend only project'];
     const be = ['backend only', 'rest api backend only', 'api only', 'server only',
-        'no frontend', 'just backend', 'only backend', 'generate a complete rest api backend only'];
+        'no frontend', 'just backend', 'only backend', 'generate a complete rest api backend only',
+        'backend api', 'backend only project'];
+    const mvp = ['quick mvp', 'mvp', 'minimal', 'simple version', 'quick prototype'];
 
     if (fe.some(k => p.includes(k))) return 'frontend';
     if (be.some(k => p.includes(k))) return 'backend';
+    if (mvp.some(k => p.includes(k))) return 'mvp';
     return 'fullstack';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MODE-SPECIFIC PROMPT CONFIGURATION
-// Each mode gets a unique system context, file scaffold blueprint, and checklist.
+// MODE-SPECIFIC PROMPT CONFIGURATION (stack-aware)
 // ─────────────────────────────────────────────────────────────────────────────
-function getModePromptConfig(mode, projectName, projectDesc) {
+function getModePromptConfig(mode, projectName, projectDesc, selectedStack, resolvedDeps) {
     const slug = projectName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const fe = selectedStack?.frontend || 'React + Vite';
+    const be = selectedStack?.backend || 'Node.js + Express';
+    const db = selectedStack?.database || 'MongoDB';
 
     if (mode === 'frontend') {
         return {
-            systemContext: `You are a senior React developer with deep expertise in Vite, React Router, and modern frontend architecture.
-You are building a PRODUCTION-READY frontend-only React + Vite application.
+            systemContext: `You are a world-renowned UI/UX Architect specializing in modern, high-end SAAS platforms.
+PROJECT MISSION: Create a "Wowed-at-first-glance" ${fe} application for "${projectName}".
+VISUAL IDENTITY: Dark-mode by default, sophisticated glassmorphism, glowing micro-interactions, and GSAP-style smooth transitions.
+TECH STACK: ${fe}
 DO NOT generate any backend files. NO server.js, NO express, NO Node.js server code.`,
 
             blueprint: `
-REQUIRED FILE STRUCTURE (frontend-only):
-  README.md                          ← Complete setup guide
-  package.json                       ← Pinned React 18 + Vite 5 deps
-  vite.config.js                     ← Vite config with React plugin
+REQUIRED FILE STRUCTURE (frontend-only using ${fe}):
+  README.md                          ← Complete setup guide (npm install → npm run dev)
+  package.json                       ← Exact packages from the SELECTED TECH STACK MANDATE
+  vite.config.js                     ← Framework plugin (no proxy needed for frontend-only)
   index.html                         ← HTML entry point
   src/
-    main.jsx                         ← ReactDOM.createRoot entry
-    App.jsx                          ← Root component with Router
+    main.jsx (or main.js/main.ts)    ← App entry point
+    App.jsx (or App.vue/App.ts)      ← Root component with Router
     App.css                          ← Global styles + CSS variables
     components/
-      Navbar.jsx                     ← Navigation with React Router links
+      Navbar.[ext]                   ← Navigation
       Navbar.css
-      [Feature]Card.jsx              ← Domain-specific feature component
-      [Feature]Card.css
-      Footer.jsx                     ← Footer component
-      Footer.css
+      [Feature].[ext]                ← Main feature component
+      [Feature].css
+      Footer.[ext]                   ← Footer component
     pages/
-      HomePage.jsx                   ← Landing/home page
-      [Feature]Page.jsx              ← Main feature page
-      NotFoundPage.jsx               ← 404 page
+      HomePage.[ext]                 ← Landing page
+      [Feature]Page.[ext]            ← Main feature page
+      NotFoundPage.[ext]             ← 404 handler
     services/
-      api.js                         ← Axios instance with baseURL + interceptors
-    hooks/
-      use[Feature].js                ← Custom hook for domain logic
+      api.js                         ← HTTP client instance
+    hooks/ or composables/
+      use[Feature].js                ← Data logic hook/composable
     utils/
-      helpers.js                     ← Pure utility functions
-    .gitignore`,
+      helpers.js                     ← Pure utilities
+  .gitignore`,
 
             checklist: `
-VERIFICATION CHECKLIST (you must satisfy ALL before responding):
-□ package.json: react@^18.2.0, react-dom@^18.2.0, react-router-dom@^6.22.0, axios@^1.6.7
-□ package.json devDeps: vite@^5.1.4, @vitejs/plugin-react@^4.2.1
-□ index.html: <div id="root"> + <script type="module" src="/src/main.jsx">
-□ vite.config.js: plugins: [react()] — no proxy needed for frontend-only
-□ App.jsx: uses <BrowserRouter> + <Routes> with at least 3 <Route> definitions
-□ Navbar: renders on all pages, has working navigation links
-□ At least 3 React components with real interaction logic (not just display text)
-□ App.css: defines CSS custom properties in :root, uses Flexbox/Grid layouts
-□ src/services/api.js: axios.create() with baseURL set to env variable or config
-□ At least 1 custom hook (use[Feature].js) with useState/useEffect
+VERIFICATION CHECKLIST:
+□ package.json: uses ONLY packages from the TECH STACK MANDATE
+□ index.html: correct entry point for ${fe}
+□ Root component: uses framework Router with at least 3 route definitions
+□ At least 3 styled components with real interaction logic
+□ Global CSS file defines CSS custom properties in :root
+□ src/services/api.js: HTTP client instance (axios or fetch wrapper)
+□ At least 1 custom hook/composable with state management
 □ Every CSS file imported in its corresponding component
-□ All component imports use correct relative paths
-□ NotFoundPage.jsx handles 404 routing
-□ NO server.js, NO express, NO backend files whatsoever
-□ README has: npm install → npm run dev → http://localhost:5173`,
+□ All imports use correct relative paths
+□ NO server-side files (no server.js, no express, no backend code)
+□ README: install → dev → localhost URL`,
             fileCount: '12–18 files'
         };
     }
 
     if (mode === 'backend') {
         return {
-            systemContext: `You are a senior Node.js/Express developer with deep expertise in REST API design, MongoDB/Mongoose, and API security.
-You are building a PRODUCTION-READY backend REST API.
-DO NOT generate any React/Vite/frontend files. NO HTML, NO CSS, NO JSX files.`,
+            systemContext: `You are a senior ${be} developer building a PRODUCTION-READY REST API for "${projectName}".
+Tech Stack: ${be} with ${db}
+DO NOT generate any frontend files. No HTML, no CSS, no JSX, no client-side code.`,
 
             blueprint: `
-REQUIRED FILE STRUCTURE (backend-only):
-  README.md                          ← Complete API documentation
-  package.json                       ← Pinned Express + Mongoose deps
-  .env.example                       ← All environment variables documented
+REQUIRED FILE STRUCTURE (backend-only using ${be} + ${db}):
+  README.md                          ← API documentation with curl examples
+  package.json                       ← Exact packages from TECH STACK MANDATE
+  .env.example                       ← PORT, DB connection, JWT_SECRET documented
   .gitignore                         ← Excludes node_modules, .env
-  server.js                          ← Express app entry point
+  server.js                          ← App entry point
   src/
     config/
-      db.js                          ← Mongoose connection with retry logic
+      db.js                          ← ${db} connection with retry logic
     middleware/
       auth.js                        ← JWT Bearer token verification
-      errorHandler.js                ← Global error handler middleware
-      validate.js                    ← express-validator error formatter
+      errorHandler.js                ← Global error handler
+      validate.js                    ← Input validation error formatter
     models/
-      User.js                        ← User Mongoose model
-      [Domain].js                    ← Domain-specific Mongoose model
+      User.js                        ← User model for ${db}
+      [Domain].js                    ← Domain-specific model
     routes/
       authRoutes.js                  ← POST /register, POST /login
-      [domain]Routes.js              ← Domain CRUD routes
+      [domain]Routes.js              ← CRUD routes
     controllers/
-      authController.js              ← register, login handlers
+      authController.js              ← register + login handlers
       [domain]Controller.js          ← CRUD handlers
     utils/
-      generateToken.js               ← JWT sign helper`,
+      generateToken.js               ← Auth token helper`,
 
             checklist: `
-VERIFICATION CHECKLIST (you must satisfy ALL before responding):
-□ package.json: express@^4.18.2, mongoose@^8.2.1, cors@^2.8.5, dotenv@^16.4.5
-□ package.json: bcryptjs@^2.4.3, jsonwebtoken@^9.0.2, helmet@^7.1.0, morgan@^1.10.0
-□ package.json devDeps: nodemon@^3.1.0
+VERIFICATION CHECKLIST:
+□ package.json: uses ONLY packages from the TECH STACK MANDATE
 □ package.json scripts: "start": "node server.js", "dev": "nodemon server.js"
-□ server.js: require('dotenv').config() is line 1
-□ server.js: uses helmet(), cors(), morgan('dev'), express.json()
-□ server.js: imports and mounts all route files under /api/v1/
-□ server.js: calls connectDB() and then starts listening
-□ src/config/db.js: mongoose.connect with error handling + console log on success
-□ auth.js middleware: verifies JWT from "Authorization: Bearer <token>" header
-□ authController.js: register hashes password with bcryptjs, login returns JWT
-□ Every controller function: async, try/catch, returns { success, data, message }
-□ .env.example: PORT, MONGODB_URI, JWT_SECRET, JWT_EXPIRE with descriptions
-□ README: npm install → cp .env.example .env → fill values → npm run dev → Postman/curl examples
-□ NO React, NO Vite, NO HTML, NO CSS, NO JSX files`,
-            fileCount: '12–18 files'
+□ server.js: loads env config FIRST, then sets up middleware, routes, DB connect
+□ Database config: uses ${db} connection with error handling
+□ Auth middleware: verifies JWT from "Authorization: Bearer <token>" header
+□ authController: register hashes password, login returns token
+□ Every controller: async, try/catch, returns { success, data, message }
+□ .env.example: PORT, DB connection string, JWT_SECRET with descriptions
+□ README: install → copy .env.example → fill values → dev server → curl examples
+□ NO frontend files (no React, no Vite, no HTML, no CSS, no JSX)`,
+            fileCount: '14–18 files'
+        };
+    }
+
+    if (mode === 'mvp') {
+        return {
+            systemContext: `You are a senior full-stack developer building a visually BREATH-TAKING MVP for "${projectName}".
+Tech Stack: ${fe} (frontend), ${be} (backend), ${db} (database)
+VISUAL MISSION: Use the "Hyper-Premium SAAS Design" standard. Implement a 'Bento Grid' layout, neon-glow accents, and a 6-layer color palette to make this MVP feel like a $1M product.`,
+
+            blueprint: `
+REQUIRED FILE STRUCTURE (minimal full-stack MVP):
+  README.md                          ← Setup guide covering both frontend + backend
+  frontend/
+    package.json                     ← Exact frontend packages from TECH STACK MANDATE
+    vite.config.js (or similar)      ← With /api proxy → http://localhost:5000
+    index.html
+    src/
+      main.[ext]                     ← Entry point
+      App.[ext]                      ← Root component
+      App.css                        ← Basic styles
+      pages/
+        HomePage.[ext]               ← Main page with core feature
+      services/
+        api.js                       ← HTTP client
+  backend/
+    package.json                     ← Exact backend packages from TECH STACK MANDATE
+    .env.example                     ← Required env vars
+    .gitignore
+    server.js                        ← Entry point
+    src/
+      config/db.js                   ← ${db} connection
+      models/[Domain].js             ← Core model
+      routes/[domain]Routes.js       ← 2-3 essential routes
+      controllers/[domain]Controller.js ← Core logic`,
+
+            checklist: `
+VERIFICATION CHECKLIST (MVP):
+□ Both frontend/ and backend/ folders exist and are complete
+□ package.json files use ONLY packages from TECH STACK MANDATE
+□ Frontend proxies /api calls to the backend port
+□ Backend has at least 2 working API endpoints
+□ Database model defined and connected
+□ Core user-facing feature is functional end-to-end
+□ .env.example documents all required env vars
+□ README covers BOTH frontend and backend run instructions
+□ No TODO stubs — every function has real working code`,
+            fileCount: '10–16 files'
         };
     }
 
     // fullstack
     return {
-        systemContext: `You are a senior full-stack developer with expertise in React, Node.js, Express, MongoDB, and modern web architecture.
-You are building a PRODUCTION-READY full-stack application with a React frontend and Node.js backend in separate directories.
-Both the frontend/ and backend/ directories must be complete and independently runnable.`,
+        systemContext: `You are a world-class Full-Stack UI/UX Architect crafting a visually STUNNING masterpiece for "${projectName}".
+Tech Stack: ${fe} (frontend), ${be} (backend), ${db} (database)
+AESTHETIC MANDATE: You MUST use the Hyper-Premium SAAS standard. Every page must have a mesh-gradient hero, glassmorphic floating navbars, and neon-active hover states. NO basic colors — ONLY the 6-layer palette.`,
 
         blueprint: `
-REQUIRED FILE STRUCTURE (full-stack):
-  README.md                             ← Covers BOTH frontend and backend setup
+REQUIRED FILE STRUCTURE (full-stack using ${fe} + ${be} + ${db}):
+  README.md                             ← Covers BOTH frontend + backend setup
   frontend/
-    package.json                        ← Pinned React 18 + Vite 5 deps
-    vite.config.js                      ← /api proxy → http://localhost:5000
-    index.html                          ← <div id="root"> entry
+    package.json                        ← Exact frontend packages from TECH STACK MANDATE
+    vite.config.js (or framework cfg)   ← /api proxy → http://localhost:5000
+    index.html                          ← HTML entry
     src/
-      main.jsx                          ← ReactDOM.createRoot
-      App.jsx                           ← BrowserRouter + Route definitions
+      main.[ext]                        ← Entry point
+      App.[ext]                         ← Router + route definitions (min 3 routes)
       App.css                           ← Global CSS variables + resets
       components/
-        Navbar.jsx + Navbar.css         ← Navigation
-        [Feature].jsx + [Feature].css   ← Domain component
+        Navbar.[ext] + Navbar.css       ← Navigation
+        [Feature].[ext] + [Feature].css ← Domain component
+        Footer.[ext]                    ← Footer
       pages/
-        HomePage.jsx                    ← Landing page
-        [Feature]Page.jsx               ← Main feature page
+        HomePage.[ext]                  ← Landing page
+        [Feature]Page.[ext]             ← Main feature page
+        NotFoundPage.[ext]              ← 404
       services/
-        api.js                          ← Axios + token interceptor
+        api.js                          ← HTTP client with auth token interceptor
       hooks/
-        use[Feature].js                 ← Custom data hook
+        use[Feature].js                 ← Data hook/composable
   backend/
-    package.json                        ← Pinned Express + Mongoose deps
-    .env.example                        ← PORT, MONGODB_URI, JWT_SECRET
+    package.json                        ← Exact backend packages from TECH STACK MANDATE
+    .env.example                        ← PORT, DB_URI, JWT_SECRET
     .gitignore                          ← node_modules, .env
-    server.js                           ← Express entry point
+    server.js                           ← Express/Fastify entry point
     src/
-      config/db.js                      ← Mongoose connect
+      config/db.js                      ← ${db} connection
       middleware/auth.js                ← JWT verification
       middleware/errorHandler.js        ← Global error handler
-      models/User.js                    ← User schema
-      models/[Domain].js                ← Domain schema
+      models/User.js                    ← User model for ${db}
+      models/[Domain].js                ← Domain model
       routes/authRoutes.js              ← Auth endpoints
-      routes/[domain]Routes.js          ← Domain endpoints
-      controllers/authController.js     ← Register/login logic
+      routes/[domain]Routes.js          ← Domain CRUD endpoints
+      controllers/authController.js     ← Login/register logic
       controllers/[domain]Controller.js ← CRUD logic
-      utils/generateToken.js            ← JWT helper`,
+      utils/generateToken.js            ← Auth token helper`,
 
         checklist: `
-VERIFICATION CHECKLIST (you must satisfy ALL before responding):
-□ frontend/package.json: react@^18.2.0, vite@^5.1.4, react-router-dom@^6.22.0, axios@^1.6.7
-□ frontend/vite.config.js: React plugin + proxy /api → http://localhost:5000
-□ frontend/index.html: proper <div id="root"> + <script type="module" src="/src/main.jsx">
-□ frontend/src/main.jsx: ReactDOM.createRoot with <React.StrictMode>
-□ frontend/src/App.jsx: BrowserRouter + at least 3 Routes
-□ frontend/src/services/api.js: axios.create + token injection interceptor
-□ backend/package.json: express@^4.18.2, mongoose@^8.2.1, bcryptjs@^2.4.3, jsonwebtoken@^9.0.2
-□ backend/server.js: dotenv.config() first, then middleware, routes, DB connect
-□ backend/src/config/db.js: mongoose.connect with error handling
-□ backend/src/middleware/auth.js: JWT Bearer verification, attaches req.user
-□ backend/src/middleware/errorHandler.js: catches and formats all errors to JSON
-□ authController.js: bcrypt hashing on register, JWT return on login
-□ All controllers: try/catch, { success, data, message } response shape
-□ frontend API calls use relative /api/... paths (proxied by Vite)
+VERIFICATION CHECKLIST (full-stack):
+□ frontend/package.json: uses ONLY packages from TECH STACK MANDATE
+□ backend/package.json: uses ONLY packages from TECH STACK MANDATE
+□ Frontend config: /api proxy points to backend port (5000)
+□ Frontend entry point: correct for ${fe}
+□ Root component: Router with at least 3 routes
+□ services/api.js: HTTP client with auth token header injection
+□ Backend server.js: env config loaded FIRST, then middleware, routes, DB
+□ ${db} connection with error handling in config/db.js
+□ Auth middleware: JWT Bearer verification, attaches req.user
+□ authController: bcrypt on register, JWT token on login
+□ All controllers: try/catch, { success, data, message } shape
+□ Frontend uses relative /api/... paths (proxied to backend)
 □ README: step-by-step for backend first (port 5000) then frontend (port 5173)
-□ ZERO cross-referencing imports between frontend/ and backend/`,
-        fileCount: '20–30 files'
+□ ZERO cross-referencing imports between frontend/ and backend/
+□ .env.example documents all environment variables`,
+        fileCount: '18–26 files'
     };
 }
 
@@ -366,26 +563,38 @@ class VibeCodingService {
     constructor() {}
 
     detectMode(userPrompt) { return detectMode(userPrompt); }
-    buildModeConfig(mode)   { return getModePromptConfig(mode, 'Project', 'A web application'); }
 
-    async generateProject(userPrompt, projectContext = '') {
+    /**
+     * Generate a complete project from a prompt + project context.
+     * @param {string} userPrompt - The user's generation request
+     * @param {string} projectContext - Stringified context (description, requirements)
+     * @param {object|null} selectedStack - Design phase selected tech stack object
+     */
+    async generateProject(userPrompt, projectContext = '', selectedStack = null) {
         const mode = detectMode(userPrompt);
-        // Infer project name from prompt (best-effort)
-        const nameMatch = userPrompt.match(/"([^"]+)"/);
-        const projectName = nameMatch ? nameMatch[1] : 'My Project';
+
+        // Extract project name from prompt or context
+        const nameMatch = userPrompt.match(/"([^"]+)"/) || userPrompt.match(/for ([a-zA-Z0-9 ]+)/i);
+        const projectName = nameMatch ? nameMatch[1].trim() : 'New Project';
         const projectDesc = projectContext || userPrompt;
 
-        const cfg = getModePromptConfig(mode, projectName, projectDesc);
+        // Resolve technology-specific dependency versions from the selected stack
+        const resolvedDeps = resolveStackDependencies(selectedStack);
+        const stackMandate = buildStackMandate(selectedStack, resolvedDeps);
+
+        const cfg = getModePromptConfig(mode, projectName, projectDesc, selectedStack, resolvedDeps);
         const slug = projectName.toLowerCase().replace(/[^a-z0-9]/g, '-');
 
         const prompt = `${cfg.systemContext}
 
+${stackMandate}
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  PROJECT REQUEST
+  PROJECT DETAILS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-NAME: "${projectName}"
-WHAT TO BUILD: ${userPrompt}
-${projectContext ? `ADDITIONAL CONTEXT: ${projectContext}` : ''}
+PROJECT NAME   : "${projectName}"
+USER REQUEST   : ${userPrompt}
+${projectContext ? `PROJECT CONTEXT:\n${projectContext}` : ''}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   PROFESSIONAL BLUEPRINT — follow this structure exactly
@@ -398,7 +607,7 @@ ${cfg.blueprint}
 ${GENERATION_STANDARDS}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  OUTPUT FORMAT  (${cfg.fileCount})
+  OUTPUT FORMAT  (target: ${cfg.fileCount})
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Respond with ONLY this JSON — no prose, no markdown fences:
 {
@@ -418,20 +627,26 @@ ${cfg.checklist}
 Apply all checks above, then generate the complete project JSON now:`;
 
         const result = await mistralService.generateJSON(prompt);
-        result.files = sanitizeFiles(result.files);
+        result.files = sanitizeFiles(result.files || []);
         result.structure = buildStructureFromFiles(result.files);
+        result.mode = mode;
+        result.techStack = selectedStack;
         return result;
     }
 
     // ── Update an existing project ─────────────────────────────────────────────
-    async updateProject(userPrompt, currentFiles) {
+    async updateProject(userPrompt, currentFiles, selectedStack = null) {
         const filePaths = currentFiles.map(f => `  ${f.path}`).join('\n');
         const existingCode = currentFiles.slice(0, 8).map(f =>
             `--- ${f.path} ---\n${(f.code || '').slice(0, 400)}`
         ).join('\n\n');
 
+        const resolvedDeps = resolveStackDependencies(selectedStack);
+        const stackMandate = selectedStack ? buildStackMandate(selectedStack, resolvedDeps) : '';
+
         const prompt = `You are a senior software developer updating an existing project.
 Apply the requested change surgically — only touch files that need changing.
+${stackMandate}
 
 USER REQUEST: "${userPrompt}"
 
@@ -453,6 +668,7 @@ ${existingCode}
 5. Never change pinned dependency versions in package.json files.
 6. Every import in modified files must still reference a file that EXISTS.
 7. No TODO comments, no placeholders, no stub implementations.
+8. Keep the selected tech stack — do NOT introduce new frameworks.
 
 ${GENERATION_STANDARDS}
 

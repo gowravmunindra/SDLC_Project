@@ -57,6 +57,8 @@ const projectSchema = new mongoose.Schema({
     design: {
         architecture: mongoose.Schema.Types.Mixed,
         diagrams: mongoose.Schema.Types.Mixed,
+        techStacks: mongoose.Schema.Types.Mixed,
+        selectedStack: mongoose.Schema.Types.Mixed,
         completedAt: Date
     },
 

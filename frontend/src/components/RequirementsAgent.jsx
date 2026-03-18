@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useProject } from '../contexts/ProjectContext'
 import apiService from '../services/apiService'
-import huggingFaceService from '../services/huggingFaceService'
+import geminiService from '../services/geminiService'
+
 import { requirementsPrompt } from '../utils/promptTemplates'
 import { convertToIEEEFormat } from '../utils/ieeeFormatConverter'
 import { generateIEEEPDF } from '../utils/ieeePDFGenerator'
@@ -30,7 +31,6 @@ function RequirementsAgent({ onClose, onComplete }) {
         if (currentProject && currentProject.requirements) {
             const req = currentProject.requirements
 
-            // Load all existing data
             if (req.projectDescription) {
                 setProjectDescription(req.projectDescription)
             }
@@ -49,38 +49,35 @@ function RequirementsAgent({ onClose, onComplete }) {
                 })
             }
 
-            if (req.assumptions && req.assumptions.length > 0) {
-                setAssumptions(req.assumptions)
-            }
+            if (req.assumptions && req.assumptions.length > 0) setAssumptions(req.assumptions)
+            if (req.constraints && req.constraints.length > 0) setConstraints(req.constraints)
+            if (req.stakeholders && req.stakeholders.length > 0) setStakeholders(req.stakeholders)
 
-            if (req.constraints && req.constraints.length > 0) {
-                setConstraints(req.constraints)
-            }
-
-            if (req.stakeholders && req.stakeholders.length > 0) {
-                setStakeholders(req.stakeholders)
-            }
-
-            // If we have requirements data, go directly to review step
             if (req.functionalRequirements && req.functionalRequirements.length > 0) {
                 setStep('review')
             }
+        } else if (currentProject) {
+            // Auto-seed textarea with the project's existing description if present
+            if (currentProject.description && currentProject.description.trim()) {
+                setProjectDescription(currentProject.description.trim())
+            }
         }
-    }, [currentProject])
+    }, [currentProject?._id])
 
     const handleAnalyze = async () => {
-        if (!projectDescription.trim()) {
-            alert('Please provide a project description first!')
+        // Project name is mandatory — pulled directly from the project record
+        const projectName = currentProject?.name?.trim()
+        if (!projectName) {
+            alert('No project name found. Please create a project first.')
             return
         }
 
         setIsAnalyzing(true)
 
         try {
-            // Wait for AI analysis to complete
-            await analyzeRequirements(projectDescription)
-
-            // Only move to review after we have data
+            // Pass name and description as SEPARATE fields so the backend
+            // can build a precise, well-structured prompt for Mistral
+            await analyzeRequirements(projectName, projectDescription.trim())
             setIsAnalyzing(false)
             setStep('review')
         } catch (error) {
@@ -90,13 +87,11 @@ function RequirementsAgent({ onClose, onComplete }) {
         }
     }
 
-    const analyzeRequirements = async (description) => {
+    const analyzeRequirements = async (projectName, projectDescription) => {
         try {
-            // Generate prompt for Gemini
-            const prompt = requirementsPrompt(description)
-
-            // Call Hugging Face AI
-            const result = await huggingFaceService.generateJSON(prompt, 2, true)
+            // Call backend with projectName (required) + projectDescription (optional)
+            // Backend builds a Mistral prompt anchored to the project name
+            const result = await apiService.generateRequirements(projectName, projectDescription)
 
             // Set the generated requirements
             setFunctionalRequirements(result.functionalRequirements || [])
@@ -110,6 +105,10 @@ function RequirementsAgent({ onClose, onComplete }) {
             setStakeholders(result.stakeholders || [])
             setAssumptions(result.assumptions || [])
             setConstraints(result.constraints || [])
+            // Store user stories if they come back
+            if (result.userStories) {
+                console.log('[RequirementsAgent] User Stories generated:', result.userStories.length)
+            }
         } catch (error) {
             console.error('Error analyzing requirements:', error)
 
@@ -364,7 +363,7 @@ function RequirementsAgent({ onClose, onComplete }) {
                         <span>Requirements Analyst Agent</span>
                     </div>
                     <h2>Project Requirements Analysis</h2>
-                    <p>Let's define what your project needs to accomplish</p>
+                    <p>Let's define what your project needs to accomplish {currentProject?.name ? `for ${currentProject.name}` : ''}</p>
                 </div>
                 <button className="close-agent" onClick={onClose}>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -419,22 +418,40 @@ function RequirementsAgent({ onClose, onComplete }) {
                         </div>
 
                         <div className="input-section">
-                            <label className="input-label">Project Description</label>
+                            {/* Project Name Badge — always visible, always used */}
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px',
+                                padding: '12px 16px',
+                                background: 'rgba(99, 102, 241, 0.08)',
+                                border: '1px solid rgba(99, 102, 241, 0.25)',
+                                borderRadius: '8px',
+                                marginBottom: '16px'
+                            }}>
+                                <span style={{ fontSize: '20px' }}>🏷️</span>
+                                <div>
+                                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '2px' }}>Project (Auto-detected)</div>
+                                    <div style={{ fontSize: '15px', fontWeight: 700, color: '#e2e8f0' }}>{currentProject?.name || 'Unknown Project'}</div>
+                                </div>
+                                <span style={{ marginLeft: 'auto', fontSize: '12px', color: '#64748b', fontStyle: 'italic' }}>Used automatically as context</span>
+                            </div>
+
+                            <label className="input-label">Additional Details <span style={{ color: '#64748b', fontWeight: 400 }}>(optional — the AI already knows your project name)</span></label>
                             <textarea
                                 className="project-description-input"
-                                placeholder="Example: I want to build an online task management system where teams can create projects, assign tasks to members, track progress, and generate reports. Users should be able to login, collaborate in real-time, and receive notifications..."
+                                placeholder={`Optionally describe ${currentProject?.name || 'your project'} in more detail...\n\nExamples:\n• Target users: students, businesses, healthcare workers\n• Key features: real-time chat, payment, analytics\n• Technical constraints: must work offline, mobile-first\n• Scale: 100 users or 1 million users?\n\nLeave blank and click Analyze — the AI will infer from your project name!`}
                                 value={projectDescription}
                                 onChange={(e) => setProjectDescription(e.target.value)}
-                                rows={10}
+                                rows={8}
                             />
 
                             <div className="helper-text">
-                                <strong>💡 Tips:</strong> Include information about:
+                                <strong>💡 How it works:</strong>
                                 <ul>
-                                    <li>What the system should do</li>
-                                    <li>Who will use it</li>
-                                    <li>Key features you envision</li>
-                                    <li>Any specific constraints or requirements</li>
+                                    <li>The AI automatically analyzes <strong>"{currentProject?.name}"</strong> to infer its domain and purpose</li>
+                                    <li>Add optional details to make the requirements more specific</li>
+                                    <li>The more details you provide, the more tailored the output</li>
                                 </ul>
                             </div>
                         </div>
@@ -444,16 +461,16 @@ function RequirementsAgent({ onClose, onComplete }) {
                             <button
                                 className="btn-primary-action"
                                 onClick={handleAnalyze}
-                                disabled={!projectDescription.trim() || isAnalyzing}
+                                disabled={!currentProject?.name || isAnalyzing}
                             >
                                 {isAnalyzing ? (
                                     <>
                                         <span className="spinner"></span>
-                                        Analyzing...
+                                        Analyzing "{currentProject?.name}"...
                                     </>
                                 ) : (
                                     <>
-                                        Analyze Requirements
+                                        Analyze "{currentProject?.name?.length > 20 ? currentProject.name.slice(0, 20) + '...' : currentProject?.name}"
                                         <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                                             <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                                         </svg>

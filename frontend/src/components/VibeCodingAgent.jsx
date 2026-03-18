@@ -150,13 +150,29 @@ function VibeCodingAgent({ onClose, onComplete }) {
     const [openTabs, setOpenTabs] = useState([])
     const [expandedFolders, setExpandedFolders] = useState(new Set(['root']))
 
+    // Derive design-phase context once
+    const designStack = currentProject?.design?.selectedStack || null
+    const stackLabel = designStack
+        ? `${designStack.name || 'Custom'}: ${designStack.frontend}, ${designStack.backend}, ${designStack.database}`
+        : null
+
+    // Build requirements summary for prompt context
+    const reqSummary = useMemo(() => {
+        const frs = currentProject?.requirements?.functionalRequirements || []
+        if (!frs.length) return ''
+        return frs.slice(0, 8).map(r => `- ${r.title}: ${r.description}`).join('\n')
+    }, [currentProject])
+
     // Chat state
     const [userPrompt, setUserPrompt] = useState('')
     const [isGenerating, setIsGenerating] = useState(false)
     const [countdown, setCountdown] = useState(0)
-    const [chatMessages, setChatMessages] = useState([
-        { type: 'bot', text: '👋 Welcome to Vibe Coding! Describe what you want to build or click a template below.' }
-    ])
+    const [chatMessages, setChatMessages] = useState(() => {
+        const stackMsg = designStack
+            ? `\n\n🔧 **Stack detected from Design Phase:** ${stackLabel}\nAll generated code will use this stack.`
+            : `\n\n⚠️ No tech stack selected in the Design Phase yet. The tool will use React + Node.js defaults. You can still generate — or go to Design Phase to pick a stack first.`
+        return [{ type: 'bot', text: `👋 Welcome to Vibe Coding! Describe what you want to build or click a template below.${stackMsg}` }]
+    })
     const chatEndRef = useRef(null)
 
     // Panel size state (in pixels)
@@ -297,29 +313,42 @@ function VibeCodingAgent({ onClose, onComplete }) {
     const PREDEFINED_PROMPTS = useMemo(() => {
         const title = currentProject?.name || 'My Project'
         const desc = currentProject?.description || 'a professional web application'
+        const stack = currentProject?.design?.selectedStack
+
+        // Build a rich context block injected into every predefined prompt
+        const stackCtx = stack
+            ? `\n\nSELECTED TECH STACK (MANDATORY — use only this):\n  Name: ${stack.name}\n  Frontend: ${stack.frontend}\n  Backend: ${stack.backend}\n  Database: ${stack.database}`
+            : ''
+
+        const reqCtx = reqSummary
+            ? `\n\nFUNCTIONAL REQUIREMENTS:\n${reqSummary}`
+            : ''
+
+        const baseCtx = `\n\nPROJECT: "${title}"\nDESCRIPTION: ${desc}${stackCtx}${reqCtx}`
+
         return [
             {
                 icon: '🚀', label: 'Full-Stack App', color: '#6366f1',
-                // backend detectMode → 'fullstack'
-                prompt: `Generate a complete, production-ready full-stack web application for "${title}". Description: ${desc}. Include a React frontend (React 18, Vite 5) inside a frontend/ folder with multiple styled components, React Router 6, and an axios services/api.js. Also include a Node.js/Express 4 backend inside a backend/ folder with real API routes, MongoDB/Mongoose 8 models, JWT auth middleware, bcryptjs, .env.example, and a comprehensive README with step-by-step run instructions for both.`
+                hint: 'Frontend + Backend + DB · README · Runnable',
+                prompt: `Generate a complete, production-ready full-stack web application.${baseCtx}\n\nInclude a full frontend folder with UI components, routing, and API integration. Include a full backend with REST API routes, database models, JWT auth, .env.example, and a comprehensive README covering setup for both frontend and backend. Use EXACTLY the tech stack specified above.`
             },
             {
                 icon: '🎨', label: 'Frontend Only', color: '#06b6d4',
-                // backend detectMode → 'frontend' (trigger: 'react + vite frontend only project')
-                prompt: `Generate a complete React + Vite frontend only project for "${title}". Description: ${desc}. NO backend, NO server.js, NO express — only React files. Include: index.html, vite.config.js, src/main.jsx, src/App.jsx, src/App.css, at least 3 styled React components with real interaction logic, src/pages/ with React Router 6, src/services/api.js with an axios instance, and a README (npm install → npm run dev → http://localhost:5173). Use React 18, Vite 5, React Router 6, Axios. Make the UI look modern and professional.`
+                hint: 'UI · Components · Routing · Modern Styling',
+                prompt: `Generate a complete frontend only project (no backend).${baseCtx}\n\nDO NOT generate any server-side files. Include: entry point, root component with router (min 3 routes), at least 4 styled components with real interaction logic, global CSS, an HTTP client service file, and README (install → dev → localhost). Use EXACTLY the frontend technology specified in the stack above.`
             },
             {
                 icon: '⚙️', label: 'Backend API', color: '#10b981',
-                // backend detectMode → 'backend' (trigger: 'complete rest api backend only')
-                prompt: `Generate a complete REST API backend only for "${title}". Description: ${desc}. NO frontend — no React, no Vite, no HTML/CSS. Only Node.js files. Include: server.js, src/config/db.js, src/middleware/auth.js (JWT), src/middleware/errorHandler.js, at least 3 route files with matching controllers, at least 2 Mongoose models, .env.example (PORT, MONGODB_URI, JWT_SECRET), .gitignore, and a README (npm install → cp .env.example .env → fill values → npm run dev). Use Express 4, Mongoose 8, jsonwebtoken 9, bcryptjs.`
+                hint: 'REST API · Auth · DB Models · .env',
+                prompt: `Generate a complete REST API backend only (no frontend HTML/CSS/JSX).${baseCtx}\n\nDO NOT generate any frontend files. Include: app entry point, database connection, JWT auth middleware, global error handler, at least 3 route files with matching controllers, at least 2 DB models, .env.example, .gitignore, and README with curl examples. Use EXACTLY the backend and database specified in the stack above.`
             },
             {
                 icon: '⚡', label: 'Quick MVP', color: '#f59e0b',
-                // backend detectMode → 'fullstack'
-                prompt: `Generate a minimal full-stack MVP for "${title}": ${desc}. Keep it simple but complete: a styled React landing page in frontend/ (React 18, Vite 5), and 1-2 Express API endpoints in backend/ (Express 4). Every file must be complete and runnable — no placeholders, no TODOs. Include a README with run instructions for both frontend and backend.`
+                hint: 'Minimal · Core features · Fast to run',
+                prompt: `Generate a minimal but complete full-stack MVP.${baseCtx}\n\nFocus on core functionality only — keep it simple but runnable. Include a styled landing/feature page (frontend) and 2-3 essential API endpoints (backend). Every file must be complete — no TODOs, no placeholders. Include README with run instructions for both frontend and backend. Use EXACTLY the tech stack specified above.`
             }
         ]
-    }, [currentProject])
+    }, [currentProject, reqSummary])
 
     const handleGenerate = async (quickPrompt = null) => {
         const prompt = (quickPrompt || userPrompt).trim()
@@ -335,11 +364,17 @@ function VibeCodingAgent({ onClose, onComplete }) {
         }
 
         setIsGenerating(true)
-        setCountdown(90)
+        setCountdown(120)
 
         try {
-            const payload = { projectId: currentProject?._id || 'standalone', userPrompt: prompt, currentFiles: isFresh ? [] : files }
-            const res = isFresh ? await apiService.vibeGenerate(payload) : await apiService.vibeUpdate(payload)
+            const payload = {
+                projectId: currentProject?._id || 'standalone',
+                userPrompt: prompt,
+                currentFiles: isFresh ? [] : files
+            }
+            const res = isFresh
+                ? await apiService.vibeGenerate(payload)
+                : await apiService.vibeUpdate(payload)
 
             if (res.data.success) {
                 const clean = sanitizeFiles(res.data.files || [])
@@ -350,9 +385,10 @@ function VibeCodingAgent({ onClose, onComplete }) {
                     const def = readme || clean[0]
                     setSelectedFile(def); setOpenTabs([def])
                 }
+                const stackNote = designStack ? `\n🔧 Stack used: **${stackLabel}**` : ''
                 setChatMessages(prev => [...prev, {
                     type: 'bot',
-                    text: `✅ ${res.data.summary || 'Project generated!'}\n\n📁 **${clean.length} files** ready. Click **📥 Download ZIP** to export your project.`
+                    text: `✅ ${res.data.summary || 'Project generated!'}${stackNote}\n\n📁 **${clean.length} files** ready. Click **📥 Download ZIP** to export your project.`
                 }])
             }
         } catch (err) {
@@ -379,6 +415,16 @@ function VibeCodingAgent({ onClose, onComplete }) {
         } finally { setIsGenerating(false) }
     }
 
+    if (!currentProject) {
+        return (
+            <div className="vc-root centered-state">
+                <div className="vc-spinner"></div>
+                <p>Loading project data...</p>
+                <button className="vc-btn vc-btn-finalize" onClick={onClose} style={{ marginTop: '20px' }}>Close</button>
+            </div>
+        )
+    }
+
     // ── Render ────────────────────────────────────────────────────────────────
     return (
         <div className="vc-root">
@@ -396,6 +442,12 @@ function VibeCodingAgent({ onClose, onComplete }) {
                     </div>
                     {files.length > 0 && (
                         <div className="vc-file-count-badge">{files.length} files</div>
+                    )}
+                    {currentProject?.design?.selectedStack && (
+                        <div className="vc-project-chip vc-stack-chip" style={{ background: 'rgba(99, 102, 241, 0.15)', color: '#818cf8', flexShrink: 0 }}>
+                            <span className="vc-project-dot" style={{ background: '#818cf8' }} />
+                            {currentProject.design.selectedStack.name}: {currentProject.design.selectedStack.frontend}, {currentProject.design.selectedStack.backend}, {currentProject.design.selectedStack.database}
+                        </div>
                     )}
                 </div>
 
@@ -522,6 +574,26 @@ function VibeCodingAgent({ onClose, onComplete }) {
                                 <h2 className="vc-welcome-title">Vibe Coding Studio</h2>
                                 <p className="vc-welcome-sub">Generate production-ready, runnable projects in seconds using AI.</p>
 
+                                {/* Stack Banner */}
+                                {stackLabel ? (
+                                    <div className="vc-stack-banner">
+                                        <span className="vc-stack-banner-icon">🔧</span>
+                                        <div>
+                                            <div className="vc-stack-banner-title">Design Phase Stack Detected</div>
+                                            <div className="vc-stack-banner-value">{stackLabel}</div>
+                                        </div>
+                                        <span className="vc-stack-banner-badge">Enforced</span>
+                                    </div>
+                                ) : (
+                                    <div className="vc-stack-banner vc-stack-banner--warn">
+                                        <span className="vc-stack-banner-icon">⚠️</span>
+                                        <div>
+                                            <div className="vc-stack-banner-title">No Stack Selected</div>
+                                            <div className="vc-stack-banner-value">Will use React + Node.js + MongoDB defaults. Visit the Design Phase to pick a custom stack.</div>
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="vc-template-grid">
                                     {PREDEFINED_PROMPTS.map(p => (
                                         <button
@@ -534,7 +606,7 @@ function VibeCodingAgent({ onClose, onComplete }) {
                                             <span className="vc-tcard-icon">{p.icon}</span>
                                             <div className="vc-tcard-body">
                                                 <div className="vc-tcard-label">{p.label}</div>
-                                                <div className="vc-tcard-hint">Full setup · README · Runnable</div>
+                                                <div className="vc-tcard-hint">{p.hint}</div>
                                             </div>
                                             <span className="vc-tcard-arrow">→</span>
                                         </button>

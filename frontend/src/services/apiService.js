@@ -7,10 +7,11 @@ const api = axios.create({
     baseURL: API_URL,
     headers: {
         'Content-Type': 'application/json'
-    }
+    },
+    timeout: 300000 // 5 minutes
 })
 
-// Add auth token to all requests
+// Request interceptor to add auth token
 api.interceptors.request.use(
     (config) => {
         const token = localStorage.getItem('token')
@@ -19,15 +20,28 @@ api.interceptors.request.use(
         }
         return config
     },
-    (error) => {
-        return Promise.reject(error)
-    }
+    (error) => Promise.reject(error)
 )
 
-// Handle errors globally
+// Response interceptor for global error handling
 api.interceptors.response.use(
     (response) => response,
-    (error) => {
+    async (error) => {
+        const originalRequest = error.config;
+        
+        // Handle network errors (backend down)
+        if (!error.response && error.message === 'Network Error') {
+            console.error('[API] Backend unreachable. Ensure server is running on port 5001.');
+            throw new Error('Our backend is taking a nap or is unreachable. Please ensure the server is running.');
+        }
+
+        // Retry on 500 once if it's a transient failure, except for long-running AI calls
+        if (error.response?.status === 500 && !originalRequest._retry && !originalRequest.url.includes('generate')) {
+            originalRequest._retry = true;
+            console.warn('[API] Transient 500 error, retrying once...');
+            return api(originalRequest);
+        }
+
         if (error.response?.status === 401) {
             // Unauthorized - clear token and redirect to login
             localStorage.removeItem('token')
@@ -85,8 +99,21 @@ const apiService = {
     validateConsistency: (projectId) => api.post(`/projects/${projectId}/validate`),
 
     // Vibe Coding (Creative Generation)
-    vibeGenerate: (payload) => api.post('/vibe-coding/generate-project', payload),
-    vibeUpdate: (payload) => api.post('/vibe-coding/update-project', payload),
+    vibeGenerate: (payload) => api.post('/vibe-coding/generate-project', payload, { timeout: 900000 }), // 15 mins
+    vibeUpdate: (payload) => api.post('/vibe-coding/update-project', payload, { timeout: 600000 }), // 10 mins
+
+    // AI Utils (Mistral)
+    generateRequirements: (projectName, projectDescription = '') =>
+        api.post('/ai/requirements', { projectName, projectDescription }).then(res => res.data),
+    suggestTechStacks: (requirements) => api.post('/ai/tech-stacks', { requirements }).then(res => res.data),
+    generateDiagrams: (requirements, type = null) => api.post('/ai/diagrams', { requirements, type }).then(res => res.data),
+    // Backend PlantUML rendering proxy - bypasses browser URL length limits
+    // Returns a URL that points to the backend render endpoint
+    getPlantUMLRenderUrl: (code) => {
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+        // We use a POST-via-fetch approach in the component, so this returns the endpoint URL
+        return `${API_URL}/ai/plantuml/render`;
+    },
 
     // AI Guide
     askGuide: (projectId, query) => api.post('/guide/ask', { projectId, query })

@@ -1,7 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useProject } from '../contexts/ProjectContext'
 import apiService from '../services/apiService'
-import geminiService from '../services/geminiService'
 import { getPlantUMLUrl, cleanPlantUML } from '../utils/plantuml'
 import './DesignAgent.css'
 
@@ -9,9 +8,36 @@ const DIAGRAM_STYLE = `skinparam backgroundColor transparent\nskinparam shadowin
 
 function DesignAgent({ onClose, onComplete }) {
     const { currentProject, updateProject, refreshCurrentProject } = useProject()
-    const [step, setStep] = useState('loading') // loading, architecture, diagrams, complete
+    const [step, setStep] = useState('loading') // loading, techStack, diagrams, complete
     const [requirements, setRequirements] = useState(null)
-    const [architecture, setArchitecture] = useState(null)
+    const [techStacks, setTechStacks] = useState([
+        {
+            name: "MERN Stack (Scalable JavaScript)",
+            description: "Industry-standard full-stack JavaScript environment.",
+            frontend: "React 18, Vite, Tailwind CSS",
+            backend: "Node.js, Express",
+            database: "MongoDB (Mongoose)",
+            rationale: "Best for rapid development and handling unstructured data with ease."
+        },
+        {
+            name: "Python Full Stack (AI & Data Ready)",
+            description: "Modern stack for high-performance APIs and data tasks.",
+            frontend: "React 18 + Tailwind",
+            backend: "Python (FastAPI / Django)",
+            database: "PostgreSQL / MongoDB",
+            rationale: "Best for projects requiring AI integration, complex calculations, or heavy data processing."
+        },
+        {
+            name: "Next.js Fullstack (Performance)",
+            description: "Performance-first architecture with server-side capabilities.",
+            frontend: "Next.js 14, Lucide React",
+            backend: "Next.js API Routes",
+            database: "Supabase / PostgreSQL",
+            rationale: "Highly optimized for SEO, speed, and modern developer experience."
+        }
+    ])
+    const [selectedStack, setSelectedStack] = useState(null)
+    const [isGeneratingStacks, setIsGeneratingStacks] = useState(false)
 
     // UI State
     const [showHero, setShowHero] = useState(true)
@@ -42,183 +68,150 @@ function DesignAgent({ onClose, onComplete }) {
             setRequirements(currentProject.requirements)
         }
 
-        if (currentProject.design && currentProject.design.architecture) {
-            setArchitecture(currentProject.design.architecture)
+        const savedDesign = currentProject.design || {};
+        
+        // 1. Tech Stack Loading
+        if (savedDesign.techStacks?.length > 0) {
+            setTechStacks(savedDesign.techStacks);
+        }
+        
+        if (savedDesign.selectedStack) {
+            setSelectedStack(savedDesign.selectedStack);
+        }
 
-            if (currentProject.design.diagrams) {
-                setDiagrams(prev => {
-                    const newDiagrams = { ...prev }
-                    Object.keys(currentProject.design.diagrams).forEach(key => {
-                        if (newDiagrams[key]) {
-                            newDiagrams[key] = {
-                                ...newDiagrams[key],
-                                ...currentProject.design.diagrams[key],
-                                // Ensure URL is present if code exists
-                                url: currentProject.design.diagrams[key].url || (currentProject.design.diagrams[key].code ? getPlantUMLUrl(currentProject.design.diagrams[key].code) : '')
-                            }
+        // 2. Diagrams Loading
+        if (savedDesign.diagrams) {
+            setDiagrams(prev => {
+                const updated = { ...prev };
+                Object.entries(savedDesign.diagrams).forEach(([key, val]) => {
+                    if (updated[key]) {
+                        // Support both legacy objects and current string-only formats
+                        const codeString = typeof val === 'string' ? val : (val?.code || '');
+                        if (codeString) {
+                            updated[key] = {
+                                ...updated[key],
+                                code: codeString,
+                                url: getPlantUMLUrl(codeString),
+                                status: 'done'
+                            };
                         }
-                    })
-                    return newDiagrams
-                })
-            }
-            setStep('architecture')
-            return
+                    }
+                });
+                return updated;
+            });
         }
 
-        if (currentProject.requirements) {
-            setStep('architecture')
-            if (!architecture) {
-                setTimeout(() => {
-                    generateArchitectureInBackground(currentProject.requirements)
-                }, 500)
-            }
+        // 3. Determine Navigation State / Step
+        const hasSelected = !!savedDesign.selectedStack;
+        const hasGeneratedDiagrams = Object.values(savedDesign.diagrams || {}).some(d => (typeof d === 'string' ? d.length > 5 : d?.code?.length > 5));
+
+        if (hasSelected && hasGeneratedDiagrams) {
+            setStep('complete');
+        } else if (hasSelected) {
+            setStep('diagrams');
         } else {
-            setStep('architecture')
+            setStep('techStack');
         }
-    }, [currentProject])
 
-    // SYNC: Update URLs whenever code changes (handles manual edits too)
-    useEffect(() => {
-        const activeCode = diagrams[activeDiagram]?.code;
-        if (activeCode) {
-            const newUrl = getPlantUMLUrl(activeCode);
-            if (newUrl !== diagrams[activeDiagram].url) {
-                setDiagrams(prev => ({
-                    ...prev,
-                    [activeDiagram]: { ...prev[activeDiagram], url: newUrl }
-                }));
-            }
+        // 4. Background AI Refinement (Only if we don't have enough options yet)
+        const isOnlyDefaults = (savedDesign.techStacks?.length || 0) < 4;
+        if (currentProject.requirements && !hasSelected && isOnlyDefaults) {
+            setTimeout(() => {
+                generateTechStacksInBackground(currentProject.requirements)
+            }, 800)
         }
+    }, [currentProject?._id]) // Only re-run when project identity changes
+
+    // Live re-render: when user manually edits code in textarea, debounce-render after 1.5s
+    const renderTimerRef = useRef(null);
+    const prevCodeRef = useRef('');
+    useEffect(() => {
+        const currentCode = diagrams[activeDiagram]?.code || '';
+        // Only trigger if code actually changed and diagram was previously done (not still generating)
+        if (
+            currentCode &&
+            currentCode !== prevCodeRef.current &&
+            diagrams[activeDiagram]?.status === 'done'
+        ) {
+            prevCodeRef.current = currentCode;
+            // Debounce: wait 1.5s after last keystroke before rendering
+            clearTimeout(renderTimerRef.current);
+            renderTimerRef.current = setTimeout(() => {
+                renderDiagramCode(activeDiagram, currentCode);
+            }, 1500);
+        }
+        return () => clearTimeout(renderTimerRef.current);
     }, [diagrams[activeDiagram]?.code, activeDiagram]);
 
     // Safety timeout
     useEffect(() => {
         const timeout = setTimeout(() => {
             if (step === 'loading' && currentProject) {
-                setStep('architecture')
+                setStep('techStack')
             }
         }, 3000)
         return () => clearTimeout(timeout)
-    }, [step, currentProject])
+    }, [step, currentProject?._id])
 
-    const generateArchitectureInBackground = async (reqData) => {
+    const generateTechStacksInBackground = async (reqData) => {
+        setIsGeneratingStacks(true)
         try {
-            // First show fallback so user isn't staring at a blank screen
-            const fallback = generateArchitectureFallback(reqData)
-            setArchitecture(fallback.architecture)
-
-            // Then try to generate a real one with AI
-            const prompt = `Act as a Senior Solution Architect. Design a detailed system architecture for this project:
-Project: ${currentProject.name}
-Description: ${reqData.projectDescription}
-Requirements: ${reqData.functionalRequirements.slice(0, 5).map(r => r.title).join(', ')}
-
-Return ONLY a JSON object with this structure:
-{
-  "architecture": {
-    "type": "e.g., Microservices / Event-Driven / Serverless",
-    "justification": "why this choice fits the requirements",
-    "layers": [
-      { "name": "Layer Name", "tech": ["Tech 1", "Tech 2"], "description": "Specific responsibility" }
-    ]
-  }
-}
-Keep it professional and specific to the project.`;
-
-            const response = await geminiService.generateJSON(prompt, 2, true);
-            if (response && response.architecture) {
-                setArchitecture(response.architecture);
+            const result = await apiService.suggestTechStacks(reqData)
+            if (Array.isArray(result) && result.length > 0) {
+                // Prepend AI suggestions to ensure they appear first
+                setTechStacks(prev => {
+                    const existingNames = new Set(result.map(s => s.name.toLowerCase()));
+                    const filteredPrev = prev.filter(s => !existingNames.has(s.name.toLowerCase()));
+                    return [...result, ...filteredPrev];
+                });
             }
         } catch (error) {
-            console.error('[DesignAgent] Architecture AI generation failed:', error)
-            // Fallback is already set
+            console.error('[DesignAgent] Tech Stack generation failed:', error)
+        } finally {
+            setIsGeneratingStacks(false)
         }
     }
 
-    const generateArchitectureFallback = (reqs) => {
-        const techStack = reqs?.technicalRequirements?.stack || ['MERN Stack', 'Node.js', 'React']
-        return {
-            architecture: {
-                type: 'N-Tier Web Architecture',
-                justification: 'To ensure clear separation of concerns and scalable performance for a web-based management system.',
-                layers: [
-                    { name: 'Frontend', tech: ['React', 'CSS3', 'Vite'], description: 'Responsive SPA providing the user interface and state management.' },
-                    { name: 'API Services', tech: ['Node.js', 'Express', 'JWT'], description: 'Secure RESTful endpoints handling business logic and auth.' },
-                    { name: 'Persistence', tech: ['MongoDB', 'Mongoose'], description: 'Document-based storage for flexible requirement data.' }
-                ]
-            }
+    /**
+     * Render PlantUML code via backend proxy and update the diagram's url + status.
+     * Used both after AI generation and after manual edits (debounced).
+     */
+    const renderDiagramCode = useCallback(async (type, code) => {
+        if (!code || !code.includes('@startuml')) return;
+        try {
+            setDiagrams(prev => ({ ...prev, [type]: { ...prev[type], status: 'rendering' } }));
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+            const renderResp = await fetch(`${API_URL}/ai/plantuml/render`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(localStorage.getItem('token') ? { Authorization: `Bearer ${localStorage.getItem('token')}` } : {})
+                },
+                body: JSON.stringify({ code }),
+                signal: AbortSignal.timeout(30000)
+            });
+            if (!renderResp.ok) throw new Error(`Render HTTP ${renderResp.status}`);
+            const svgText = await renderResp.text();
+            const blob = new Blob([svgText], { type: 'image/svg+xml' });
+            const blobUrl = URL.createObjectURL(blob);
+            setDiagrams(prev => ({
+                ...prev,
+                [type]: { ...prev[type], url: blobUrl, status: 'done', error: null }
+            }));
+        } catch (err) {
+            console.warn(`[DesignAgent] renderDiagramCode fallback for ${type}:`, err.message);
+            // Fallback: direct plantuml.com URL
+            const fallbackUrl = getPlantUMLUrl(code);
+            setDiagrams(prev => ({
+                ...prev,
+                [type]: { ...prev[type], url: fallbackUrl, status: 'done', error: null }
+            }));
         }
-    }
+    }, []);
 
-    const constructDiagramPrompt = (type, projectName, reqs, arch) => {
-        // SELECT CORE REQUIREMENTS (Filter out generic ones like Login/Auth)
-        const coreReqs = reqs?.functionalRequirements?.filter(r => 
-            !r.title.toLowerCase().includes('auth') && 
-            !r.title.toLowerCase().includes('login') && 
-            !r.title.toLowerCase().includes('register') &&
-            !r.title.toLowerCase().includes('authentication')
-        ) || [];
-
-        // If after filtering we have enough project-specific reqs, use them. Otherwise fallback.
-        const focusReqs = coreReqs.length > 0 ? coreReqs : reqs?.functionalRequirements || [];
-        const functionalReqs = focusReqs.slice(0, 4).map(r => r.title).join(', ');
-
-        const typeSpecs = {
-            useCase: {
-                blueprint: "left to right direction\nactor \"User\" as U\nusecase \"Core Feature\" as UC1\nU --> UC1",
-                rules: "Always include 'left to right direction'. Focus on primary actors and 3-4 key use cases. Use simple arrows -->. IMPORTANT: Wrap ALL labels in double quotes."
-            },
-            class: {
-                blueprint: "class \"CoreEntity\" {\n  +id: string\n  +update()\n}\nclass \"Service\" {\n  +execute()\n}\nCoreEntity -- Service",
-                rules: "Show only 3-4 core classes. Include 2-3 essential fields/methods per class. Keep relationships simple. IMPORTANT: Wrap ALL names and types in double quotes."
-            },
-            sequence: {
-                blueprint: "actor \"User\" as U\nparticipant \"Controller\" as C\nparticipant \"DB\" as D\nU -> C: \"Request\"\nC -> D: \"Query\"\nD --> C: \"Result\"\nC --> U: \"Response\"",
-                rules: "Show 3-5 key participants. Map one primary success path. Use clean horizontal arrows. IMPORTANT: Wrap ALL messages and participant names in double quotes."
-            },
-            activity: {
-                blueprint: "start\n:\"User Input\";\nif (\"Valid?\") then (yes)\n  :\"Process Action\";\nelse (no)\n  :\"Show Error\";\nendif\nstop",
-                rules: "Show a simple flow from start to stop. Use :\"Action Name\"; syntax (always end actions with a semicolon and wrap text in quotes). Use 'if (...) then (...) ... else (...) ... endif' syntax."
-            },
-            state: {
-                blueprint: "state \"Dashboard\" as Dashboard\n[*] --> Dashboard\nDashboard --> \"TaskList\" : \"View Tasks\"\n\"TaskList\" --> \"TaskDetail\" : \"Select Task\"",
-                rules: "ALWAYS define states explicitly using 'state \"Name\" as Alias'. Use [*] -> Alias for start/end. Ensure all transition labels are in double quotes."
-            },
-            component: {
-                blueprint: "package \"Web Browser\" {\n  [Frontend Component]\n}\nnode \"API Server\" {\n  [REST API Service]\n}\n[Frontend Component] --> [REST API Service] : \"JSON/HTTPS\"",
-                rules: "High-level overview only. Show 3-4 main architectural blocks. Use [Component Name] syntax. Wrap interface labels in quotes."
-            },
-            deployment: {
-                blueprint: "node \"User PC\" {\n  component \"Web Browser\"\n}\nnode \"AWS Cloud\" {\n  node \"App Server\" {\n     component \"REST API\"\n  }\n}\n\"Web Browser\" --> \"REST API\" : \"HTTPS\"",
-                rules: "Show physical infrastructure. Use 'node', 'database', or 'cloud'. Wrap ALL device and connection names in quotes."
-            }
-        };
-
-        const spec = typeSpecs[type];
-
-        return `Act as a Senior Software Architect and PlantUML Expert. Generate a VALID, MINIMAL, PRODUCTION-READY PlantUML ${type} diagram for "${projectName}".
-Objective: Visualize the core business logic: ${functionalReqs}.
-
-IMPORTANT: DO NOT focus on generic features like Login, Registration, or Authentication unless the diagram type specifically requires it. Focus on the UNIQUE functionality of the project described.
-
-STRICT SYNTAX & STYLE RULES:
-1. NO NAKED TITLES: NEVER write the name of the diagram on a line by itself. If you want a title, use 'title "My Diagram"'.
-2. NO HALLUCinations: Use ONLY valid PlantUML keywords.
-3. MINIMALISM: Show ONLY the most critical 5-8 elements/steps. Avoid bloat.
-4. CLEAN CODE: No unnecessary comments. Define elements directly.
-5. SYNTAX: ${spec.rules}
-6. LABELS: Every single label, message, or description MUST be enclosed in double quotes (e.g., :\"Action\"; or --> \"Message\").
-7. LAYOUT: Ensure the diagram flows logically (Left to Right is preferred for Use Case/Component).
-8. NO CONVERSATION: Return ONLY the @startuml ... @enduml block.
-
-BLUEPRINT:
-${spec.blueprint}
-
-Generate the final PlantUML code now.`;
-    }
-
+    // Local normalization for refining AI output (lean, non-destructive)
     const normalizePlantUML = (codeRaw, type) => {
-        // 1. Core structural cleaning
+        // 1. Core structural cleaning (lean version - does NOT strip valid lines)
         let code = cleanPlantUML(codeRaw);
 
         // 2. Inject global styles if missing
@@ -226,73 +219,25 @@ Generate the final PlantUML code now.`;
             code = code.replace(/@startuml/i, `@startuml\n${DIAGRAM_STYLE}\n`);
         }
 
-        // 3. Global syntax fixes
+        // 3. Global syntax fixes (safe, non-destructive)
         code = code
-            .replace(/\/\//g, "'") // Fix invalid C-style comments
-            .replace(/-\s+>/g, '->')
-            .replace(/--\s+>/g, '-->')
-            .replace(/\bnodo\b/gi, 'node') // Fix common AI typo 'nodo' -> 'node'
-            .replace(/\busecase\s+"([^"]+)"\s+as\s+(@\w+)/gi, 'usecase "$1" as $2') // Fix invalid @ alias
+            .replace(/\bnodo\b/gi, 'node')  // Common AI typo
             .replace(/skinparam\s+shadowing\s+true/gi, 'skinparam shadowing false');
 
-        // 4. Activity-specific normalization
+        // 4. Activity-specific: inject start/stop if missing
         if (type === 'activity') {
-            code = code.replace(/^:([^"].*);/gm, ':"$1";');
-            if (!code.includes('start')) code = code.replace(/@startuml/i, '@startuml\nstart');
-            if (!code.includes('stop') && !code.includes('end')) code = code.replace(/@enduml/i, 'stop\n@enduml');
-            
-            code = code.split('\n').map(line => {
-                const l = line.trim();
-                if (l.startsWith(':') && !l.endsWith(';') && !l.includes('|')) return line + ';';
-                return line;
-            }).join('\n');
-            
-            code = code
-                .replace(/if\s+(\([^)]+\))\s+{/gi, 'if $1 then')
-                .replace(/}\s*else\s*{/gi, 'else')
-                .replace(/}\s*endif/gi, 'endif');
+            if (!code.includes('start')) code = code.replace(/@startuml[^\n]*/i, '@startuml\nstart');
+            if (!code.includes('stop') && !code.includes('@enduml')) code = code.replace(/@enduml/i, 'stop\n@enduml');
         }
 
-        // 5. Sequence-specific fixes
+        // 5. Sequence: fix Mermaid arrow leaks
         if (type === 'sequence') {
-            code = code.replace(/([->]+)\s+([^"]\w[\w\s?]*)$/gm, '$1 "$2"');
+            code = code.replace(/->>|=>>|-->>>/g, '->');
         }
 
-        // 6. UseCase layout consistency
+        // 6. UseCase: ensure left-to-right for better readability
         if (type === 'useCase' && !code.includes('left to right direction')) {
             code = code.replace(/@startuml/i, '@startuml\nleft to right direction\n');
-        }
-
-        // 7. State-specific fixes & Type Hinting
-        if (type === 'state') {
-            code = code.replace(/\[ \* \]/g, '[*]');
-            
-            // Smarter arrow labeling: Only wrap in quotes if there are spaces and not already quoted
-            code = code.split('\n').map(line => {
-                if (line.includes('-->')) {
-                    const parts = line.split('-->');
-                    if (parts.length === 2) {
-                        let target = parts[1].trim();
-                        // If target has spaces and no quotes/colon, and isn't [*]
-                        if (target.includes(' ') && !target.includes('"') && !target.includes(':') && target !== '[*]') {
-                            return `${parts[0]} --> "${target}"`;
-                        }
-                    }
-                }
-                return line;
-            }).join('\n');
-
-            // FORCE STATE TYPE HINT if missing to prevent sequence assumption
-            if (!code.toLowerCase().includes('state ')) {
-                code = code.replace(/@startuml/i, '@startuml\nstate " " as force_state_type <<hidden>>\nhide force_state_type\n');
-            }
-        }
-        
-        // 8. Structural Layout Type Hinting
-        if (type === 'deployment' || type === 'component') {
-            if (!code.toLowerCase().includes('node ') && !code.toLowerCase().includes('package ')) {
-                code = code.replace(/@startuml/i, '@startuml\nnode " " as force_arch_type <<hidden>>\nhide force_arch_type\n');
-            }
         }
 
         return code.trim();
@@ -306,28 +251,29 @@ Generate the final PlantUML code now.`;
         }))
 
         try {
-            const prompt = constructDiagramPrompt(type, currentProject.name, requirements, architecture)
-            const codeRaw = await geminiService.generateContent(prompt, true)
-            console.log(`[DesignAgent] Raw AI Response for ${type}:`, codeRaw)
+            // Step 1: Generate the PlantUML code via Mistral AI
+            const result = await apiService.generateDiagrams(requirements, type);
 
-            // 1. Check for AI refusals or empty output
-            const hasTags = codeRaw.toLowerCase().includes('@startuml') && codeRaw.toLowerCase().includes('@enduml')
-            if (!hasTags && (codeRaw.length < 50 || codeRaw.toLowerCase().includes('sorry'))) {
-                throw new Error("AI failed to generate a valid diagram. Please retry.");
+            const hasDiagram = result && result[type];
+
+            if (!hasDiagram) {
+                setDiagrams(prev => ({
+                    ...prev,
+                    [type]: { ...prev[type], status: 'error', error: 'AI returned empty diagram. Click "Regenerate" to try again.' }
+                }));
+                return;
             }
 
-            // 2. Run consolidated normalization
-            const code = normalizePlantUML(codeRaw, type);
+            const code = normalizePlantUML(result[type], type);
 
+            // Step 2: Store the code immediately so editor shows it
             setDiagrams(prev => ({
                 ...prev,
-                [type]: {
-                    ...prev[type],
-                    code,
-                    url: getPlantUMLUrl(code),
-                    status: 'done'
-                }
-            }))
+                [type]: { ...prev[type], code, status: 'rendering' }
+            }));
+
+            // Step 3: Render via backend proxy
+            await renderDiagramCode(type, code);
 
         } catch (error) {
             console.error(`[DesignAgent] Generation Error [${type}]:`, error)
@@ -348,42 +294,61 @@ Generate the final PlantUML code now.`;
             }))
 
             const current = diagrams[activeDiagram]
-            const prompt = `You are a Senior PlantUML Architect. Modify the following code based on the user request.
-            
-            CURRENT CODE:
-            ${current.code}
-            
-            USER INSTRUCTION: ${customPrompt}
-            
-            STRICT VALIDATION RULES:
-            1. Output ONLY valid PlantUML code.
-            2. FIX typos: Use 'node', NOT 'nodo'.
-            3. Ensure all labels/messages are wrapped in double quotes.
-            4. Use 'start' and 'stop' for activity diagrams.
-            5. Return ONLY the @startuml ... @enduml block.`
+            const diagramLabel = current.label || activeDiagram;
 
-            const resultRaw = await geminiService.generateContent(prompt)
+            // Build the AI modification prompt — sent to backend Mistral (not gemini)
+            const reqs = requirements?.functionalRequirements?.map(r => r.description).join('; ') || '';
+            const modifyPayload = {
+                prompt: `You are a PlantUML expert. Modify the following ${diagramLabel} diagram code based on the user instruction.
 
-            // Apply consolidated normalization
-            const code = normalizePlantUML(resultRaw, activeDiagram)
+PROJECT CONTEXT:
+${requirements?.description || 'N/A'}
+REQUIREMENTS: ${reqs}
 
-            if (code) {
+CURRENT CODE:
+${current.code}
+
+USER INSTRUCTION: ${customPrompt}
+
+STRICT RULES:
+1. Return ONLY the modified PlantUML code — no explanation, no markdown fences.
+2. Preserve the diagram type (${diagramLabel}) — do NOT change it to another type.
+3. Keep all existing elements unless the user explicitly asks to remove them.
+4. Ensure the code starts with @startuml and ends with @enduml.
+5. Fix any syntax errors in the process.
+6. Maintain skinparam backgroundColor transparent and skinparam shadowing false.`
+            };
+
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+            const resp = await fetch(`${API_URL}/ai/generate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(localStorage.getItem('token') ? { Authorization: `Bearer ${localStorage.getItem('token')}` } : {})
+                },
+                body: JSON.stringify(modifyPayload),
+                signal: AbortSignal.timeout(60000)
+            });
+
+            if (!resp.ok) throw new Error(`AI modify failed: ${resp.status}`);
+            const { text: resultRaw } = await resp.json();
+
+            const code = normalizePlantUML(resultRaw, activeDiagram);
+
+            if (code && code.includes('@startuml')) {
+                // Store code then render
                 setDiagrams(prev => ({
                     ...prev,
-                    [activeDiagram]: {
-                        ...prev[activeDiagram],
-                        code,
-                        url: getPlantUMLUrl(code),
-                        status: 'done'
-                    }
-                }))
+                    [activeDiagram]: { ...prev[activeDiagram], code, status: 'rendering' }
+                }));
+                await renderDiagramCode(activeDiagram, code);
                 setCustomPrompt('')
             }
         } catch (error) {
             console.error('Modify failed:', error)
             setDiagrams(prev => ({
                 ...prev,
-                [activeDiagram]: { ...prev[activeDiagram], status: 'error', error: error.message }
+                [activeDiagram]: { ...prev[activeDiagram], status: 'error', error: `Modification failed: ${error.message}` }
             }))
         } finally {
             setIsModifying(false)
@@ -391,25 +356,49 @@ Generate the final PlantUML code now.`;
     }
 
     const handleComplete = async () => {
-        const designData = {
-            architecture,
-            diagrams,
-            completedAt: new Date().toISOString()
+        const hasAllDiagrams = Object.values(diagrams).every(d => d.status === 'done' || d.code)
+        if (!hasAllDiagrams) {
+            if (!window.confirm('Some diagrams are not yet generated. Complete anyway?')) return
         }
 
+        const designData = {
+            techStacks: techStacks,
+            selectedStack: selectedStack,
+            diagrams: Object.entries(diagrams).reduce((acc, [key, val]) => {
+                acc[key] = val.code;
+                return acc;
+            }, {})
+        }
+        designData.completedAt = new Date().toISOString()
+
         try {
-            await apiService.saveDesign(currentProject._id, designData)
-            await updateProject(currentProject._id, { status: 'development' })
+            // saveDesign now automatically updates status to 'development' on the backend
+            await apiService.saveDesign(currentProject?._id, designData)
+            
+            // Refresh to sync the state (including status)
             await refreshCurrentProject()
             onComplete(designData)
         } catch (error) {
-            console.error('Save failed:', error)
-            alert('Failed to save design')
+            console.error('[DesignAgent] Save failed:', error)
+            const errorMsg = error.response?.data?.message || error.message
+            alert(`Failed to save design: ${errorMsg}`)
         }
     }
 
-    const handleScroll = (e) => {
-        setShowHero(e.target.scrollTop < 50)
+    // Safety helper to prevent "Objects are not valid as a React child"
+    const renderSafeValue = (val) => {
+        if (!val) return 'Not Specified';
+        if (typeof val === 'string') return val;
+        if (typeof val === 'object') {
+            // If it's the tech stack detail object we saw in the console
+            return Object.entries(val)
+                .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
+                .join(', ');
+        }
+        return String(val);
+    };
+
+    const handleScroll = (e) => {        setShowHero(e.target.scrollTop < 50)
     }
 
     const renderHero = () => (
@@ -420,7 +409,7 @@ Generate the final PlantUML code now.`;
                     <span>System Design Agent</span>
                 </div>
                 <h2>System Architecture & Design</h2>
-                <p>Blueprint for {currentProject?.name}</p>
+                <p>Blueprint for {currentProject?.name || 'Loading...'}</p>
             </div>
             <button className="close-agent" onClick={onClose}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -429,6 +418,16 @@ Generate the final PlantUML code now.`;
             </button>
         </div>
     )
+
+    if (!currentProject) {
+        return (
+            <div className="agent-workspace centered-state">
+                <div className="loading-spinner"></div>
+                <p>Loading project data...</p>
+                <button className="btn-secondary" onClick={onClose} style={{ marginTop: '20px' }}>Close</button>
+            </div>
+        )
+    }
 
     return (
         <div className="agent-workspace">
@@ -443,10 +442,10 @@ Generate the final PlantUML code now.`;
                 {/* Tabs */}
                 <div className="design-tabs-container">
                     <button
-                        className={`step-tab ${step === 'architecture' ? 'active' : ''}`}
-                        onClick={() => setStep('architecture')}
+                        className={`step-tab ${step === 'techStack' ? 'active' : ''}`}
+                        onClick={() => setStep('techStack')}
                     >
-                        🏗️ Architecture
+                        🏗️ Tech Stack
                     </button>
                     <button
                         className={`step-tab ${step === 'diagrams' ? 'active' : ''}`}
@@ -455,72 +454,121 @@ Generate the final PlantUML code now.`;
                         📊 Diagrams
                     </button>
                 </div>
-
-                {/* ARCHITECTURE VIEW */}
-                {step === 'architecture' && (
+                {/* TECH STACK SELECTION VIEW */}
+                {step === 'techStack' && (
                     <div className="step-container">
-                        {architecture ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                                <div className="architecture-card glass-panel">
-                                    <div className="arch-header">
-                                        <h3>{architecture.type} Architecture</h3>
-                                        <div className="badge-primary">{architecture.type}</div>
+                        <div className="step-header">
+                            <h3>Select Your Technical Stack</h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <p style={{ margin: 0 }}>Choose the foundation for your project. This will drive the code generation in the next phase.</p>
+                                {isGeneratingStacks && (
+                                    <div className="ai-status-tag">
+                                        <div className="small-spinner"></div>
+                                        <span>AI is tailoring more options...</span>
                                     </div>
-                                    <p className="arch-justification">{architecture.justification}</p>
-                                </div>
+                                )}
+                            </div>
+                        </div>
 
-                                <div className="layers-grid">
-                                    {(architecture.layers || []).map((layer, idx) => (
-                                        <div key={idx} className="layer-card glass-panel">
-                                            <div className="layer-number">{idx + 1}</div>
-                                            <h4>{layer.name}</h4>
-                                            <p>{layer.description}</p>
-                                            <div className="tech-tags">
-                                                {(layer.tech || []).map(t => (
-                                                    <span key={t} className="tag">{t}</span>
-                                                ))}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                            <div className="tech-stack-grid">
+                                {techStacks.map((stack, idx) => (
+                                    <div
+                                        key={idx}
+                                        className={`stack-option-card ${selectedStack?.name === stack.name ? 'selected' : ''}`}
+                                        onClick={() => setSelectedStack(stack)}
+                                    >
+                                        <div className="stack-selection-indicator">
+                                            {selectedStack?.name === stack.name ? '✓' : ''}
+                                        </div>
+                                        <h4>{renderSafeValue(stack.name)}</h4>
+                                        <p className="stack-desc">{renderSafeValue(stack.description)}</p>
+
+                                        <div className="stack-details">
+                                            <div className="stack-detail-item">
+                                                <span className="detail-label">Frontend:</span>
+                                                <span className="detail-value">{renderSafeValue(stack.frontend)}</span>
+                                            </div>
+                                            <div className="stack-detail-item">
+                                                <span className="detail-label">Backend:</span>
+                                                <span className="detail-value">{renderSafeValue(stack.backend)}</span>
+                                            </div>
+                                            <div className="stack-detail-item">
+                                                <span className="detail-label">Database:</span>
+                                                <span className="detail-value">{renderSafeValue(stack.database)}</span>
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
 
-                                <div className="step-actions">
-                                    <button className="btn-primary" onClick={() => setStep('diagrams')}>
-                                        Proceed to Diagrams →
-                                    </button>
-                                </div>
+                                        <div className="stack-rationale">
+                                            <strong>Why this?</strong>
+                                            <p>{stack.rationale}</p>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
-                        ) : (
-                            <div className="centered-state">
-                                <div className="loading-spinner-large"></div>
-                                <p style={{ marginTop: 20 }}>Generating system architecture...</p>
+
+                            <div className="step-actions">
+                                <button
+                                    className="btn-primary"
+                                    onClick={async () => {
+                                        setStep('diagrams');
+                                        // Auto-save selection so it persists if they revisit the phase
+                                        try {
+                                            const currentDesign = currentProject?.design || {};
+                                            await apiService.saveDesign(currentProject?._id, {
+                                                ...currentDesign,
+                                                techStacks: techStacks,
+                                                selectedStack: selectedStack
+                                            });
+                                            await refreshCurrentProject();
+                                        } catch (e) {
+                                            console.warn('[DesignAgent] Auto-save selection failed:', e);
+                                        }
+                                    }}
+                                    disabled={!selectedStack}
+                                >
+                                    Proceed to Diagrams →
+                                </button>
                             </div>
-                        )}
+                        </div>
                     </div>
                 )}
 
                 {/* DIAGRAMS VIEW */}
                 {step === 'diagrams' && (
-                    <div className="step-container">
-                        <div className="diagrams-nav">
-                            {Object.entries(diagrams).map(([key, data]) => (
-                                <button
-                                    key={key}
-                                    className={`diagram-pill ${activeDiagram === key ? 'active' : ''}`}
-                                    onClick={() => setActiveDiagram(key)}
-                                >
-                                    {data.label}
-                                    {data.status === 'done' && <span className="status-dot success"></span>}
-                                    {data.status === 'loading' && <span className="status-dot loading"></span>}
-                                </button>
-                            ))}
-                        </div>
+                    <div className="step-container diagrams-step">
+                        <div className="diagram-workspace">
+                            {/* Left Sidebar: Diagram Selector */}
+                            <div className="diagram-sidebar">
+                                <div className="sidebar-header">
+                                    <span>DIAGRAMS</span>
+                                </div>
+                                <div className="diagram-pills-list">
+                                    {Object.entries(diagrams).map(([key, data]) => (
+                                        <button
+                                            key={key}
+                                            className={`diagram-sidebar-pill ${activeDiagram === key ? 'active' : ''}`}
+                                            onClick={() => setActiveDiagram(key)}
+                                        >
+                                            <span className="pill-label">{data.label}</span>
+                                            {data.status === 'done' && <span className="pill-status success">✓</span>}
+                                            {(data.status === 'loading' || data.status === 'rendering') && <span className="pill-status loading">...</span>}
+                                            {data.status === 'error' && <span className="pill-status error">!</span>}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="sidebar-footer">
+                                     <button className="btn-secondary-small" onClick={() => setStep('techStack')}>← Stack</button>
+                                </div>
+                            </div>
 
-                        <div className="diagram-workspace glass-panel">
-                            {/* Editor Column (LEFT) */}
+                            {/* Editor Column (MIDDLE) */}
                             <div className="diagram-column editor-column">
                                 <div className="column-header">
-                                    <h4>Modify Diagram</h4>
+                                    <h4>{diagrams[activeDiagram].label} Script</h4>
+                                    <div className="status-indicator">
+                                        {diagrams[activeDiagram].status === 'loading' && <span className="small-spinner"></span>}
+                                    </div>
                                 </div>
                                 <textarea
                                     className="code-editor-area"
@@ -532,71 +580,117 @@ Generate the final PlantUML code now.`;
                                             [activeDiagram]: { ...prev[activeDiagram], code }
                                         }))
                                     }}
+                                    placeholder="PlantUML code will appear here..."
                                 />
                                 <div className="prompt-box">
-                                    <input
-                                        type="text"
-                                        placeholder="Instructions..."
-                                        value={customPrompt}
-                                        onChange={e => setCustomPrompt(e.target.value)}
-                                        onKeyDown={e => e.key === 'Enter' && handleModify()}
-                                    />
-                                    <button className="btn-send" onClick={handleModify} disabled={isModifying}>➤</button>
+                                    <div className="prompt-label">
+                                        ✨ AI Diagram Assistant
+                                    </div>
+                                    <div className="prompt-input-wrapper">
+                                        <textarea
+                                            className="prompt-textarea"
+                                            placeholder="Ask AI to modify this diagram (e.g., 'Add a login step', 'Remove the Admin actor')..."
+                                            value={customPrompt}
+                                            onChange={e => setCustomPrompt(e.target.value)}
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter' && !e.shiftKey && !isModifying) {
+                                                    e.preventDefault();
+                                                    handleModify();
+                                                }
+                                            }}
+                                            disabled={isModifying}
+                                            rows={2}
+                                        />
+                                        <button 
+                                            className="btn-send-magic" 
+                                            onClick={handleModify} 
+                                            disabled={isModifying || !customPrompt.trim()}
+                                            title="Modify Diagram with AI"
+                                        >
+                                            {isModifying ? <div className="small-spinner"></div> : '🪄'}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 
                             {/* Preview Column (RIGHT) */}
                             <div className="diagram-column preview-column">
-                                {diagrams[activeDiagram].status === 'loading' ? (
-                                    <div className="centered-state">
-                                        <div className="loading-spinner"></div>
-                                        <p>Generating...</p>
+                                <div className="column-header">
+                                    <h4>Live Preview</h4>
+                                    <div className="preview-toolbar">
+                                        <button className="toolbar-btn" onClick={() => generateDiagram(activeDiagram)} disabled={diagrams[activeDiagram].status === 'loading'}>
+                                            ⟳ Regenerate
+                                        </button>
                                     </div>
-                                ) : diagrams[activeDiagram].url ? (
-                                    <div className="preview-content">
-                                        <img
-                                            src={diagrams[activeDiagram].url}
-                                            alt="Diagram"
-                                        />
-                                        <div className="preview-actions">
-                                            <button
-                                                className="btn-icon"
+                                </div>
+                                <div className="preview-container">
+                                    {(diagrams[activeDiagram].status === 'loading' || diagrams[activeDiagram].status === 'rendering') ? (
+                                        <div className="centered-state">
+                                            <div className="loading-spinner-large"></div>
+                                            <p>
+                                                {diagrams[activeDiagram].status === 'rendering'
+                                                    ? `Rendering ${diagrams[activeDiagram].label}...`
+                                                    : `Generating ${diagrams[activeDiagram].label}...`
+                                                }
+                                            </p>
+                                        </div>
+                                    ) : diagrams[activeDiagram].status === 'error' ? (
+                                        <div className="centered-state">
+                                            <div className="empty-preview-icon">⚠️</div>
+                                            <p className="error-text">Generation Failed</p>
+                                            <p>{diagrams[activeDiagram].error || 'Possible syntax error or API timeout.'}</p>
+                                            <button className="btn-primary" onClick={() => generateDiagram(activeDiagram)}>
+                                                Try Again
+                                            </button>
+                                        </div>
+                                    ) : diagrams[activeDiagram].url ? (
+                                        <div className="preview-content">
+                                            <img
+                                                src={diagrams[activeDiagram].url}
+                                                alt={`${diagrams[activeDiagram].label} Diagram`}
                                                 onClick={() => setLightbox({ isOpen: true, url: diagrams[activeDiagram].url })}
-                                            >
-                                                🔍 Full View (SVG)
-                                            </button>
+                                                onError={(e) => {
+                                                    // If the PlantUML server returns an error image or broken URL,
+                                                    // fall back to showing the error state so user can retry
+                                                    e.target.style.display = 'none';
+                                                    setDiagrams(prev => ({
+                                                        ...prev,
+                                                        [activeDiagram]: {
+                                                            ...prev[activeDiagram],
+                                                            status: 'error',
+                                                            error: 'Diagram rendering failed. The PlantUML code may contain syntax errors. Try regenerating or editing the code manually.'
+                                                        }
+                                                    }));
+                                                }}
+                                                onLoad={(e) => { e.target.style.display = ''; }}
+                                            />
+                                            <div className="floating-actions">
+                                                <button onClick={() => setLightbox({ isOpen: true, url: diagrams[activeDiagram].url })}>🔍 Zoom</button>
+                                                <button onClick={() => window.open(diagrams[activeDiagram].url.replace('/svg/', '/png/'), '_blank')}>🖼️ PNG</button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="centered-state">
+                                            <div className="empty-preview-icon">📊</div>
+                                            <p>No diagram generated yet.</p>
                                             <button
-                                                className="btn-icon"
-                                                onClick={() => setLightbox({ isOpen: true, url: diagrams[activeDiagram].url.replace('/svg/', '/png/') })}
-                                            >
-                                                🖼️ Full View (PNG)
-                                            </button>
-                                            <button
-                                                className="btn-icon"
+                                                className="btn-primary"
                                                 onClick={() => generateDiagram(activeDiagram)}
                                                 disabled={diagrams[activeDiagram].status === 'loading'}
                                             >
-                                                ⟳ Retry
+                                                {diagrams[activeDiagram].status === 'loading' ? 'AI is thinking...' : `Generate ${diagrams[activeDiagram].label}`}
                                             </button>
                                         </div>
-                                    </div>
-                                ) : (
-                                    <div className="centered-state">
-                                        <button
-                                            className="btn-primary"
-                                            onClick={() => generateDiagram(activeDiagram)}
-                                            disabled={diagrams[activeDiagram].status === 'loading'}
-                                        >
-                                            {diagrams[activeDiagram].status === 'loading' ? 'AI is thinking...' : `Generate ${diagrams[activeDiagram].label}`}
-                                        </button>
-                                    </div>
-                                )}
+                                    )}
+                                </div>
                             </div>
                         </div>
 
                         <div className="step-actions">
-                            <button className="btn-secondary" onClick={() => setStep('architecture')}>← Back to Architecture</button>
-                            <button className="btn-primary" onClick={handleComplete}>Complete Design Phase →</button>
+                            <button className="btn-secondary" onClick={() => setStep('techStack')}>← Tech Stack</button>
+                            <button className="btn-primary" onClick={handleComplete}>
+                                Complete Design Phase & Move to Development →
+                            </button>
                         </div>
                     </div>
                 )}
@@ -609,10 +703,6 @@ Generate the final PlantUML code now.`;
                 />
             )}
 
-            {/* Status Overlay */}
-            <div style={{ position: 'fixed', bottom: '10px', left: '10px', background: 'rgba(0,0,0,0.8)', color: '#0f0', padding: '5px 10px', borderRadius: '5px', fontSize: '10px', zIndex: 10000, pointerEvents: 'none' }}>
-                System Status: {step.toUpperCase()} | Arch: {architecture ? 'OK' : 'WAIT'}
-            </div>
         </div>
     )
 }

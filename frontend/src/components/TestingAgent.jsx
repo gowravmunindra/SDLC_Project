@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { useProject } from '../contexts/ProjectContext'
 import apiService from '../services/apiService'
-import huggingFaceService from '../services/huggingFaceService'
+import geminiService from '../services/geminiService'
+
 import { testingPrompt } from '../utils/promptTemplates'
 import './TestingAgent.css'
 
@@ -58,7 +59,8 @@ function TestingAgent({ onClose, onComplete }) {
             const prompt = testingPrompt(reqs, design)
 
             // Add a timeout to the AI call to prevent infinite loading
-            const generationPromise = huggingFaceService.generateJSON(prompt)
+            const generationPromise = geminiService.generateJSON(prompt)
+
             const timeoutPromise = new Promise((_, reject) =>
                 setTimeout(() => reject(new Error('AI Generation Timeout')), 120000)
             )
@@ -112,6 +114,16 @@ function TestingAgent({ onClose, onComplete }) {
             console.error('Save testing error:', error)
             alert('Failed to save testing plan.')
         }
+    }
+
+    if (!currentProject) {
+        return (
+            <div className="agent-workspace centered-state">
+                <div className="loading-spinner"></div>
+                <p>Loading project data...</p>
+                <button className="btn-secondary" onClick={onClose} style={{ marginTop: '20px' }}>Close</button>
+            </div>
+        )
     }
 
     // Render loading state

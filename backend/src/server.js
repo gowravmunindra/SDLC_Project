@@ -17,13 +17,13 @@ const app = express()
 
 // ── Security & Logging Middleware ─────────────────────────────────────────────
 app.use(helmet())
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'))
+app.use(express.json({ limit: '320mb' }))
+app.use(express.urlencoded({ extended: false, limit: '20mb' }))
 app.use(cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: '*', // Allow all during development for stability
     credentials: true
 }))
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'))
-app.use(express.json({ limit: '10mb' }))
-app.use(express.urlencoded({ extended: false }))
 
 // ── API Routes ────────────────────────────────────────────────────────────────
 app.use('/api/auth',        require('./routes/authRoutes'))
@@ -42,16 +42,27 @@ app.get('/api/health', (req, res) => {
 app.use(errorHandler)
 
 // ── Start Server ──────────────────────────────────────────────────────────────
-const PORT = process.env.PORT || 5000
+const PORT = process.env.PORT || 5001
 
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n✅ Server running on http://localhost:${PORT}`)
     console.log(`   Environment : ${process.env.NODE_ENV || 'development'}`)
     console.log(`   AI Engine   : Mistral Large\n`)
 })
 
-// Increase timeout to 10 minutes for heavy AI generation requests
-server.timeout = 600000
+// Increase timeout to 15 minutes for heavy AI generation requests
+server.timeout = 900000
+server.keepAliveTimeout = 650000;
+server.headersTimeout = 660000;
+
+// ── Exception Logs ─────────────────────────────────────────────────────────────
+process.on('uncaughtException', (err) => {
+    console.error('[CRITICAL] Uncaught Exception:', err.stack || err);
+    // Keep running but log it
+});
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[CRITICAL] Unhandled Rejection at:', promise, 'reason:', reason);
+});
 
 // ── Graceful Shutdown ─────────────────────────────────────────────────────────
 const shutdown = (signal) => {

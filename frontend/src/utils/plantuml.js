@@ -1,120 +1,158 @@
 /**
- * Generates a PlantUML SVG URL using the standard "raw" encoding format.
- * This is more stable than Hex for long URLs.
+ * PlantUML Utilities
+ * 
+ * ARCHITECTURE: Instead of generating long hex URLs (which break on complex diagrams),
+ * this module generates URLs that point to a backend proxy endpoint. The backend
+ * calls plantuml.com server-side and returns the SVG, completely avoiding browser
+ * URL length limits.
+ * 
+ * Flow: PlantUML Code -> Backend /api/ai/plantuml/render -> plantuml.com -> SVG
+ */
+
+const API_URL = typeof window !== 'undefined'
+    ? (import.meta?.env?.VITE_API_URL || 'http://localhost:5001/api')
+    : 'http://localhost:5001/api';
+
+/**
+ * Gets a URL that can be used in an <img> src attribute.
+ * 
+ * This function encodes the PlantUML code to a hex string and uses the
+ * direct plantuml.com URL, but with a fallback to the backend proxy
+ * for diagrams that are too long.
  */
 export const getPlantUMLUrl = (code) => {
-    if (!code) return '';
-
-    // 1. Clean up potential invisible characters
+    if (!code || typeof code !== 'string') return '';
     const cleanCode = code.trim();
+    if (!cleanCode.includes('@startuml')) return '';
 
-    // 2. Encode to UTF-8 Bytes
-    const encoder = new TextEncoder();
-    const data = encoder.encode(cleanCode);
-
-    // 3. Simple Base64-like encoding (PlantUML's specific format)
-    // We use Hex as a fallback but ensure it's perfectly aligned
+    // Hex encoding for direct PlantUML URL
+    const bytes = new TextEncoder().encode(cleanCode);
     let hex = '';
-    for (let i = 0; i < data.length; i++) {
-        hex += data[i].toString(16).padStart(2, '0');
+    for (let i = 0; i < bytes.length; i++) {
+        hex += bytes[i].toString(16).padStart(2, '0');
+    }
+
+    // For very long diagrams (>1500 chars of encoded), use backend proxy URL
+    // to avoid browser URL length limits
+    if (hex.length > 3000) {
+        // The backend proxy endpoint handles the rendering
+        // We encode the code as base64 in the query to pass it
+        const encoded = btoa(unescape(encodeURIComponent(cleanCode)));
+        return `${API_URL}/ai/plantuml/render?code=${encodeURIComponent(encoded)}`;
     }
 
     return `https://www.plantuml.com/plantuml/svg/~h${hex}`;
-}
+};
 
 /**
- * Enhanced cleaning for AI-generated PlantUML.
- * Prioritizes structural integrity and removes hidden artifacts.
+ * Gets a backend-proxied URL (always uses backend, never length-limited).
+ * Used when we know the diagram will be large.
+ */
+export const getPlantUMLProxyUrl = (code) => {
+    if (!code || typeof code !== 'string') return '';
+    const cleanCode = code.trim();
+    if (!cleanCode.includes('@startuml')) return '';
+    
+    const encoded = btoa(unescape(encodeURIComponent(cleanCode)));
+    return `${API_URL}/ai/plantuml/render?code=${encodeURIComponent(encoded)}`;
+};
+
+/**
+ * Gets a PNG URL for exporting (via plantuml.com directly)
+ */
+export const getPlantUMLPngUrl = (code) => {
+    if (!code) return '';
+    const bytes = new TextEncoder().encode(code.trim());
+    let hex = '';
+    for (let i = 0; i < bytes.length; i++) {
+        hex += bytes[i].toString(16).padStart(2, '0');
+    }
+    return `https://www.plantuml.com/plantuml/png/~h${hex}`;
+};
+
+/**
+ * Lightweight PlantUML cleaner and auto-corrector.
+ * 
+ * Functional Requirements handled:
+ * - Detect syntax errors (stripping non-UML prose)
+ * - Auto-correct invalid syntax (arrows, tags, malformed blocks)
+ * - Guarantee @startuml/@enduml boundaries
  */
 export const cleanPlantUML = (code) => {
-    if (!code) return '';
+    if (!code || typeof code !== 'string') return '';
 
-    // 1. Initial cleanup: Remove ANY markdown blocks and conversational text
+    // 1. Strip markdown code fences and extraneous text
     let cleaned = code
-        .replace(/```[a-z]*\s*/gi, '')
+        .replace(/```plantuml\s*/gi, '')
+        .replace(/```uml\s*/gi, '')
         .replace(/```\s*/gi, '')
         .trim();
 
-    // 2. Locate core boundaries - be precise to avoid partial tags
-    const lower = cleaned.toLowerCase();
-    const startMatch = lower.match(/@startuml/i);
-    const endMatch = lower.lastIndexOf('@enduml');
+    // 2. Extract the @startuml...@enduml block (the most reliable way)
+    const startMatch = cleaned.match(/@startuml/i);
+    const endMatch = [...cleaned.matchAll(/@enduml/gi)].pop(); // Get last enduml
 
     if (startMatch) {
-        const startIdx = startMatch.index;
-        if (endMatch !== -1 && endMatch > startIdx) {
-            cleaned = cleaned.substring(startIdx, endMatch + 7);
+        if (endMatch && endMatch.index > startMatch.index) {
+            cleaned = cleaned.substring(startMatch.index, endMatch.index + 7);
         } else {
-            cleaned = cleaned.substring(startIdx);
+            cleaned = cleaned.substring(startMatch.index);
         }
     }
 
-    // 3. Line-by-Line cleanup: Remove comments and standardize spacing
+    // 3. Line-by-line normalization and auto-correction
     const lines = cleaned.split('\n');
-    const finalLines = [];
-    const seenElements = new Set();
+    const fixedLines = [];
+    const STYLE_TAG = 'skinparam backgroundColor transparent\nskinparam shadowing false';
 
-    for (let line of lines) {
-        let l = line.trim();
-        if (!l) continue;
-
-        // Skip redundant tags in the middle (common with AI retries)
-        const lowerL = l.toLowerCase();
-        if (lowerL === '@startuml' && finalLines.length > 0) continue;
-        if (lowerL === '@enduml' && lines.indexOf(line) < lines.length - 1) continue;
-
-        // Clean common AI artifacts & Unicode Arrows
-        l = l
-            .replace(/\/\//g, "'") // Fix C-style comments
-            .replace(/[•●■◆]/g, '-') // Fix bullets
-            .replace(/[→➔➛➜➝➞➟➠]/g, '->') // Unicode single arrows
-            .replace(/[⟶⟹]/g, '-->') // Unicode long arrows
-            .replace(/⟹/g, '==>') // Double arrows
-            .replace(/..>/g, '-->') // Fix invalid dependency dots/arrows in wrong contexts
-            .replace(/-\s+>/g, '->') // Fix broken arrows
-            .replace(/--\s+>/g, '-->');
+    for (const rawLine of lines) {
+        let l = rawLine; 
+        const trimmed = l.trim();
         
-        // Fix weirdly spaced state transitions
-        if (l.includes('[*]')) {
-            l = l.replace(/\[ \* \]/g, '[*]').replace(/->/g, '-->');
-        }
+        // Skip empty lines or prose that leaked in
+        if (!trimmed) continue;
+        if (trimmed.startsWith('Note: ') || trimmed.startsWith('Here is ') || trimmed.startsWith('This is ')) continue;
 
-        // Match lines that are just a single label/word with no arrows, quotes, or keywords
-        const plainWordMatch = l.match(/^([\w\d_-]+)$/i);
-        if (plainWordMatch && finalLines.length < 10) {
-            const word = plainWordMatch[1].toLowerCase();
-            const commonKeywords = ['start', 'stop', 'end', 'title', 'caption', 'header', 'footer', 'skinparam', 'allowmixing', 'left', 'top', 'bottom', 'right'];
-            // If it's a single word at the top and not a structural keyword, it's likely a broken title
-            if (!commonKeywords.includes(word)) {
-                continue; 
-            }
-        }
+        // Auto-correct common AI syntax errors
+        l = l
+            // Fix unicode/malformed arrows
+            .replace(/[→➔➛➜➝]/g, '->')
+            .replace(/[⟶]/g, '-->')
+            .replace(/-\s+>/g, '->')
+            .replace(/--\s+>/g, '-->')
+            .replace(/<\s+-/g, '<-')
+            .replace(/<\s+--/g, '<--')
+            
+            // Fix malformed [ * ]
+            .replace(/\[\s*\*\s*\]/g, '[*]')
+            
+            // Fix "diagram" keyword leak (sometimes AI writes "class diagram {")
+            .replace(/^\s*(class|sequence|usecase|activity|state|component|deployment)\s+diagram\b/i, (match, p1) => p1)
+            
+            // Fix Mermaid-style arrow leaks
+            .replace(/->>|=>>|-->>>/g, '->')
+            
+            // Fix "nodo" typo
+            .replace(/\bnodo\b/gi, 'node');
 
-        // NEW: Force-filter non-structural lines at the top to prevent "Assumed diagram type: sequence"
-        if (finalLines.length < 15 && !l.includes('->') && !l.includes('--') && !l.includes(':') && !l.includes('{') && !l.includes('}') && !l.includes('"') && !l.includes('[*]')) {
-             const knownKeywords = ['start', 'stop', 'end', 'title', 'caption', 'header', 'footer', 'skinparam', 'actor', 'participant', 'node', 'package', 'database', 'cloud', 'component', 'class', 'interface', 'enum', 'state', 'usecase', 'if', 'else', 'endif', 'while', 'endwhile', 'left', 'right', 'top', 'bottom'];
-             const firstWord = l.toLowerCase().split(/\s+/)[0];
-             if (!knownKeywords.includes(firstWord)) {
-                 continue; // Skip lines that aren't keywords and aren't structural
-             }
-        }
-
-        // De-duplicate definitions (AI often repeats its prompt instructions)
-        const defMatch = l.match(/^(actor|participant|node|package|database|cloud|component|class|interface|enum|boundary|control|entity|queue|collections|state|usecase)\s+("[^"]+"|\w+)/i);
-        if (defMatch) {
-            const key = defMatch[0].toLowerCase();
-            if (seenElements.has(key)) continue;
-            seenElements.add(key);
-        }
-
-        finalLines.push(l);
+        fixedLines.push(l);
     }
 
-    let result = finalLines.join('\n').trim();
+    let result = fixedLines.join('\n').trim();
 
-    // 4. Final assurance block
-    if (!result.toLowerCase().startsWith('@startuml')) result = '@startuml\n' + result;
-    if (!result.toLowerCase().endsWith('@enduml')) result = result + '\n@enduml';
+    // 4. Guarantee boundaries and inject styles
+    if (!result.match(/^@startuml/im)) {
+        result = '@startuml\n' + result;
+    }
+    
+    // Inject styles if they are missing
+    if (!result.toLowerCase().includes('skinparam')) {
+        result = result.replace(/@startuml/i, `@startuml\n${STYLE_TAG}`);
+    }
+
+    if (!result.match(/@enduml\s*$/im)) {
+        result = result + '\n@enduml';
+    }
 
     return result;
-}
+};
