@@ -167,23 +167,6 @@ function buildStackMandate(selectedStack, resolvedDeps) {
     const beDevDeps = resolvedDeps?.backend?.devDependencies || {};
 
     return `
-╔══════════════════════════════════════════════════════════════════════╗
-║                   SELECTED TECH STACK MANDATE                        ║
-║   STRICT: You MUST use ONLY these technologies. No substitutions.    ║
-╚══════════════════════════════════════════════════════════════════════╝
-
-STACK NAME  : ${selectedStack.name || 'Custom'}
-FRONTEND    : ${fe}
-BACKEND     : ${be}
-DATABASE    : ${db}
-
-EXACT PACKAGES TO USE:
-  Frontend dependencies   : ${JSON.stringify(feDeps)}
-  Frontend devDependencies: ${JSON.stringify(feDevDeps)}
-  Backend dependencies    : ${JSON.stringify(beDeps)}
-  Backend devDependencies : ${JSON.stringify(beDevDeps)}
-
-ENFORCEMENT RULES (NON-NEGOTIABLE):
 1. Every package.json MUST use EXACTLY the packages and versions listed above.
 2. You MUST NOT introduce any package not listed in the mandate.
 3. The generated code syntax must match the chosen framework 
@@ -261,16 +244,19 @@ STANDARD 9 — SECURITY:
 STANDARD 10 — OUTPUT FORMAT:
   Respond ONLY with the raw JSON object. No prose, no markdown fences.
 
-STANDARD 11 — HYPER-PREMIUM SAAS DESIGN (MANDATORY):
-  Every UI must be visually STUNNING and follow modern high-end SAAS aesthetics.
-  - Dark Mode by Default: Use a deep charcoal/navy background (#020617 or #030712) with high-contrast text.
-  - Hero Sections: Implement a massive, centered hero with a mesh-gradient background and a glowing primary CTA button.
-  - Bento Grid: Use a "Bento Grid" layout for feature sections (alternating card sizes with rounded corners and subtle borders).
-  - Glassmorphism: Use "backdrop-filter: blur(12px); background: rgba(255, 255, 255, 0.03);" for sidebars and cards.
-  - Neon Glow: Buttons and active states must have a subtle "glow" shadow (box-shadow or drop-shadow).
-  - GSAP/Framer Motion: Use 'power4.out' easing or smooth springs for ALL entrances. Elements must glide, not jump.
-  - 6-Layer Palette: [Main: #6366f1, Secondary: #a855f7, Accent: #10b981, Surface: #0f172a, Muted: #1e293b, Border: #334155].
-  - Border Magic: Use subtle 1px borders with 0.1 opacity for card separation.
+STANDARD 11 — HYPER-PREMIUM DESIGN & THEMATIC AESTHETICS (MANDATORY):
+  Every UI must be visually STUNNING and themed based on the project's core idea.
+  - Project-Based Theme: Adapt the 6-layer color palette to match the project's domain (e.g., Earthy greens for Nature, Neon/Dark for Gaming, Trust-Blue for Finance, Vibrant for Creative).
+  - Hero Sections: Implement a massive, themed hero with a mesh-gradient and glowing CTAs.
+  - Bento Grid: Use a "Bento Grid" layout for features (Apple/Stripe style).
+  - Glassmorphism & Motion: Backdrop-filters, neon glows, and GSAP 'power4.out' gliding animations are required.
+  - Palette Depth: [Main, Secondary, Accent, Surface, Muted, Border] — never use browser default colors.
+
+STANDARD 12 — INTEGRATION & ENV PERFECTION (NON-NEGOTIABLE):
+  - Full Route Mapping: Every feature must have its routes established in BOTH the Frontend Router and the Backend API.
+  - Perfect API Calls: The frontend service layer (api.js) must correctly call the backend endpoints with real error handling.
+  - Standardized .env: All backend secrets (DB_URL, JWT_SECRET, PORT) must be in .env with placeholders (e.g., MONGODB_URI=your_mongodb_url).
+  - Direct Variable Reference: The backend MUST use process.env.VARIABLE_NAME directly to ensure immediate configuration after unzip.
 `;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -311,31 +297,22 @@ DO NOT generate any backend files. NO server.js, NO express, NO Node.js server c
 
             blueprint: `
 REQUIRED FILE STRUCTURE (frontend-only using ${fe}):
-  README.md                          ← Complete setup guide (npm install → npm run dev)
-  package.json                       ← Exact packages from the SELECTED TECH STACK MANDATE
-  vite.config.js                     ← Framework plugin (no proxy needed for frontend-only)
-  index.html                         ← HTML entry point
+  README.md
+  package.json                       ← Exact packages from TECH STACK MANDATE
+  vite.config.js (or similar)        ← Standard config
+  index.html
   src/
-    main.jsx (or main.js/main.ts)    ← App entry point
-    App.jsx (or App.vue/App.ts)      ← Root component with Router
-    App.css                          ← Global styles + CSS variables
+    main.[ext]                       ← Framework entry point
+    App.[ext]                        ← Router or Root component
+    App.css                          ← Global styles & Design System tokens
     components/
-      Navbar.[ext]                   ← Navigation
-      Navbar.css
-      [Feature].[ext]                ← Main feature component
-      [Feature].css
-      Footer.[ext]                   ← Footer component
+      [Component].[ext]              ← Functional, styled component
+      [Component].css                ← Component-specific styles
     pages/
-      HomePage.[ext]                 ← Landing page
-      [Feature]Page.[ext]            ← Main feature page
-      NotFoundPage.[ext]             ← 404 handler
+      HomePage.[ext]                 ← Main landing page
+      [Feature]Page.[ext]            ← Secondary page
     services/
-      api.js                         ← HTTP client instance
-    hooks/ or composables/
-      use[Feature].js                ← Data logic hook/composable
-    utils/
-      helpers.js                     ← Pure utilities
-  .gitignore`,
+      api.js                         ← Mock/Static data service or external API`,
 
             checklist: `
 VERIFICATION CHECKLIST:
@@ -451,9 +428,10 @@ VERIFICATION CHECKLIST (MVP):
 
     // fullstack
     return {
-        systemContext: `You are a world-class Full-Stack UI/UX Architect crafting a visually STUNNING masterpiece for "${projectName}".
+        systemContext: `You are a world-class Full-Stack UI/UX Architect crafting a MASTERPIECE for "${projectName}".
 Tech Stack: ${fe} (frontend), ${be} (backend), ${db} (database)
-AESTHETIC MANDATE: You MUST use the Hyper-Premium SAAS standard. Every page must have a mesh-gradient hero, glassmorphic floating navbars, and neon-active hover states. NO basic colors — ONLY the 6-layer palette.`,
+MISSION: Perfect the connection. Establish ALL routes, ensure api.js calls the backend perfectly, and use process.env with placeholders in .env.
+AESTHETIC: Use the "Hyper-Premium Design & Theme" standard. Match colors to the project's domain (${projectDesc.slice(0, 100)}...).`,
 
         blueprint: `
 REQUIRED FILE STRUCTURE (full-stack using ${fe} + ${be} + ${db}):
@@ -503,11 +481,13 @@ VERIFICATION CHECKLIST (full-stack):
 □ Frontend entry point: correct for ${fe}
 □ Root component: Router with at least 3 routes
 □ services/api.js: HTTP client with auth token header injection
-□ Backend server.js: env config loaded FIRST, then middleware, routes, DB
+□ Backend server.js: env config loaded FIRST, then middleware, routes, DB. Use process.env.
 □ ${db} connection with error handling in config/db.js
 □ Auth middleware: JWT Bearer verification, attaches req.user
 □ authController: bcrypt on register, JWT token on login
 □ All controllers: try/catch, { success, data, message } shape
+□ Full Route Established: Router (FE) and Controller/Routes (BE) match perfectly
+□ .env Standard: Uses placeholders (your_mongodb_url) and code uses process.env
 □ Frontend uses relative /api/... paths (proxied to backend)
 □ README: step-by-step for backend first (port 5000) then frontend (port 5173)
 □ ZERO cross-referencing imports between frontend/ and backend/
@@ -690,12 +670,9 @@ Respond with ONLY this JSON:
                 code: typeof f.code === 'string' ? f.code : ''
             }));
         }
+
         return result;
     }
-
-    // Expose helpers for controller use
-    sanitizeFiles(files) { return sanitizeFiles(files); }
-    buildStructureFromFiles(files) { return buildStructureFromFiles(files); }
 }
 
 module.exports = new VibeCodingService();
