@@ -723,7 +723,7 @@ STRICT RULES:
             attempt++;
             try {
                 console.log(`[Mistral] Generating ${typeMeta.label} diagram (attempt ${attempt})...`);
-                const result = await this.generateJSON(prompt, 'mistral-small-latest', 60000);
+                const result = await this.generateJSON(prompt, this.model, 60000);
 
                 // Extract the code — try the type key, then any @startuml block
                 let code = result[typeKey] || result[type] || Object.values(result).find(v => typeof v === 'string' && v.includes('@startuml'));
