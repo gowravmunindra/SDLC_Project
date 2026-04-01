@@ -36,7 +36,7 @@ class ProjectProgressService {
 
         const modules = this._trackModules(project);
         const phases = this._calculatePhaseStatus(modules);
-        const overallProgress = this._calculateOverallProgress(phases);
+        const overallProgress = this._calculateOverallProgress(modules);
         const consistency = this._performInternalConsistencyCheck(project, phases, modules);
 
         // Optional AI validation if API key is present
@@ -68,28 +68,32 @@ class ProjectProgressService {
      * Track individual modules within phases.
      */
     _trackModules(project) {
-        // Map project data to requested module names
+        const r = project.requirements || {};
+        const d = project.design || {};
+        const dev = project.development || {};
+        const t = project.testing || {};
+        const s = project.status || 'planning';
+
         return {
             // Requirements Phase
-            requirements_document: project.requirements?.projectDescription ? 'generated' : 'pending',
-            user_stories: (project.requirements?.functionalRequirements?.length > 0) ? 'generated' : 'pending',
-            functional_requirements: (project.requirements?.functionalRequirements?.length > 0) ? 'generated' : 'pending',
+            requirements_document: (r.projectDescription || r.completedAt || s !== 'planning') ? 'generated' : 'pending',
+            user_stories: (r.functionalRequirements?.length > 0 || r.completedAt || s !== 'planning') ? 'generated' : 'pending',
+            functional_requirements: (r.functionalRequirements?.length > 0 || r.completedAt || s !== 'planning') ? 'generated' : 'pending',
 
             // Design Phase
-            architecture_design: (project.design?.diagrams?.component || project.design?.diagrams?.deployment || project.design?.selectedStack) ? 'generated' : 'pending',
-            database_schema: (project.design?.diagrams?.class || project.design?.diagrams?.database || project.design?.completedAt) ? 'generated' : 'pending',
-            api_design: (project.design?.diagrams?.sequence || project.design?.diagrams?.useCase || project.design?.completedAt) ? 'generated' : 'pending',
+            architecture_design: (d.diagrams?.component || d.diagrams?.deployment || d.selectedStack || d.completedAt || ['development', 'testing', 'completed'].includes(s)) ? 'generated' : 'pending',
+            database_schema: (d.diagrams?.class || d.diagrams?.database || d.completedAt || ['development', 'testing', 'completed'].includes(s)) ? 'generated' : 'pending',
+            api_design: (d.diagrams?.sequence || d.diagrams?.useCase || d.completedAt || ['development', 'testing', 'completed'].includes(s)) ? 'generated' : 'pending',
 
             // Development Phase
-            source_code_generation: (project.development?.structure || (project.development?.codeFiles && project.development?.codeFiles.length > 0)) ? 'generated' : 'pending',
-            module_implementation: (project.development?.completedAt || project.status === 'testing' || project.status === 'completed') ? 'generated' : 'pending',
+            source_code_generation: (dev.structure || (dev.codeFiles && dev.codeFiles.length > 0) || dev.completedAt || ['testing', 'completed'].includes(s)) ? 'generated' : 'pending',
+            module_implementation: (dev.completedAt || ['testing', 'completed'].includes(s)) ? 'generated' : 'pending',
 
             // Testing Phase
-            unit_tests: (project.testing?.testCases?.length > 0) ? 'generated' : 'pending',
-            integration_tests: (project.testing?.testCases?.length > 5) ? 'generated' : 'pending',
-            test_cases: (project.testing?.testCases || project.testing?.completedAt) ? 'generated' : 'pending'
+            unit_tests: (t.testCases?.length > 0 || t.completedAt || s === 'completed') ? 'generated' : 'pending',
+            integration_tests: (t.testCases?.length > 3 || t.completedAt || s === 'completed') ? 'generated' : 'pending',
+            test_cases: (t.testCases?.length > 0 || t.completedAt || s === 'completed') ? 'generated' : 'pending'
         };
-
     }
 
     /**
@@ -105,20 +109,20 @@ class ProjectProgressService {
         };
 
         return {
-            requirements: checkPhase(['requirements_document', 'functional_requirements']),
+            requirements: checkPhase(['requirements_document', 'functional_requirements', 'user_stories']),
             design: checkPhase(['architecture_design', 'database_schema', 'api_design']),
             development: checkPhase(['source_code_generation', 'module_implementation']),
-            testing: checkPhase(['test_cases'])
+            testing: checkPhase(['test_cases', 'unit_tests'])
         };
     }
 
     /**
-     * Calculate overall completion percentage.
+     * Calculate overall completion percentage with module-level granularity.
      */
-    _calculateOverallProgress(phases) {
-        const completedPhases = Object.values(phases).filter(p => p === 'completed').length;
-        const totalPhases = 4;
-        return (completedPhases / totalPhases) * 100;
+    _calculateOverallProgress(modules) {
+        const total = Object.keys(modules).length;
+        const completed = Object.values(modules).filter(m => m === 'generated').length;
+        return Math.min(100, Math.round((completed / total) * 100));
     }
 
     /**

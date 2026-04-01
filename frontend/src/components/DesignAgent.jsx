@@ -299,24 +299,28 @@ function DesignAgent({ onClose, onComplete }) {
             // Build the AI modification prompt — sent to backend Mistral (not gemini)
             const reqs = requirements?.functionalRequirements?.map(r => r.description).join('; ') || '';
             const modifyPayload = {
-                prompt: `You are a PlantUML expert. Modify the following ${diagramLabel} diagram code based on the user instruction.
+                prompt: `You are a Senior Software Architect and PlantUML expert.
+                Modify the following ${diagramLabel} diagram code based on the user instruction.
 
-PROJECT CONTEXT:
-${requirements?.description || 'N/A'}
-REQUIREMENTS: ${reqs}
+                STYLE & COMPLEXITY:
+                1. Target a "College Level & Professional" standard — clean, readable, and sophisticated.
+                2. Focus on the core 8-12 most critical elements. Avoid clutter.
+                3. Ensure all labels or names with spaces are wrapped in double quotes (e.g. state "Order Processed").
 
-CURRENT CODE:
-${current.code}
+                PROJECT CONTEXT:
+                ${requirements?.description || 'N/A'}
+                REQUIREMENTS: ${reqs}
 
-USER INSTRUCTION: ${customPrompt}
+                CURRENT CODE:
+                ${current.code}
 
-STRICT RULES:
-1. Return ONLY the modified PlantUML code — no explanation, no markdown fences.
-2. Preserve the diagram type (${diagramLabel}) — do NOT change it to another type.
-3. Keep all existing elements unless the user explicitly asks to remove them.
-4. Ensure the code starts with @startuml and ends with @enduml.
-5. Fix any syntax errors in the process.
-6. Maintain skinparam backgroundColor transparent and skinparam shadowing false.`
+                USER INSTRUCTION: ${customPrompt}
+
+                STRICT RULES:
+                1. Return ONLY the modified PlantUML code — no explanation, no markdown fences.
+                2. Preserve the diagram type (${diagramLabel}) — do NOT change it to another type.
+                3. Fix any syntax errors and ensure the code starts with @startuml and ends with @enduml.
+                4. Maintain skinparam backgroundColor transparent and skinparam shadowing false.`
             };
 
             const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';

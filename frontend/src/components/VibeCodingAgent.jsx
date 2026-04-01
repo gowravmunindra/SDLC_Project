@@ -444,7 +444,11 @@ function VibeCodingAgent({ onClose, onComplete }) {
                         <div className="vc-file-count-badge">{files.length} files</div>
                     )}
                     {currentProject?.design?.selectedStack && (
-                        <div className="vc-project-chip vc-stack-chip" style={{ background: 'rgba(99, 102, 241, 0.15)', color: '#818cf8', flexShrink: 0 }}>
+                        <div 
+                            className="vc-project-chip vc-stack-chip" 
+                            style={{ background: 'rgba(99, 102, 241, 0.15)', color: '#818cf8' }}
+                            title={`${currentProject.design.selectedStack.name}: ${currentProject.design.selectedStack.frontend}, ${currentProject.design.selectedStack.backend}, ${currentProject.design.selectedStack.database}`}
+                        >
                             <span className="vc-project-dot" style={{ background: '#818cf8' }} />
                             {currentProject.design.selectedStack.name}: {currentProject.design.selectedStack.frontend}, {currentProject.design.selectedStack.backend}, {currentProject.design.selectedStack.database}
                         </div>

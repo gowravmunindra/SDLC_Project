@@ -112,6 +112,14 @@
     background: var(--vc-green);
     box-shadow: 0 0 6px var(--vc-green);
     animation: dotPulse 2s infinite;
+    flex-shrink: 0;
+}
+.vc-stack-chip {
+    max-width: 320px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    flex-shrink: 1;
 }
 @keyframes dotPulse {
     0%, 100% { opacity: 1; }
@@ -572,7 +580,7 @@
 .vc-bubble-user .vc-bubble-text {
     background: rgba(99,102,241,0.12);
     border: 1px solid rgba(99,102,241,0.2);
-    color: #c7d2fe; text-align: right;
+    color: #c7d2fe; text-align: left;
 }
 
 /* Mini prompt buttons */

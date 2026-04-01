@@ -302,13 +302,11 @@ class MistralService {
         PROJECT NAME: "${projectName}"${descriptionBlock}
 
         ANALYSIS INSTRUCTIONS:
-        1. Use the project name to identify the domain (e.g. "Hospital Management System" → healthcare domain).
-        2. If additional context is given, incorporate it to make requirements more specific.
-        3. If no description is given, infer a realistic, comprehensive set of requirements based on the project name and industry standards.
-        4. Requirements must be project-specific — do NOT use generic titles like "System Feature" or "Process". 
-           Use names like "Patient Admission Workflow", "Invoice Generation Engine", etc.
-        5. Functional requirements must use the format: "The system shall..."
-        6. Generate at least 8 functional requirements and 3 NFRs per category.
+        1. Target a "College Level & Professional" standard — use sophisticated, precise industry terminology.
+        2. Use the project name to identify the domain (e.g. "Hospital Management System" → healthcare domain).
+        3. Requirements must be project-specific — do NOT use generic titles. Use names like "Patient Admission Workflow", etc.
+        4. Functional requirements must use the formal format: "The system shall..."
+        5. Generate at least 8 functional requirements and 3 NFRs per category.
 
         OUTPUT FORMAT (strict JSON — no prose outside JSON):
         {
@@ -701,20 +699,29 @@ WEB --> S3 : Static Files
             ].filter(Boolean).join('\n\n').slice(0, 1800);
         }
 
-        const prompt = `You are a PlantUML expert. Generate a ${typeMeta.label} diagram for the project below.
-${typeMeta.guide}
+        const prompt = `You are a Senior Software Architect and PlantUML expert. 
+        Generate a professional, college-level ${typeMeta.label} diagram for the project requirements provided below.
 
-PROJECT REQUIREMENTS:
-${reqContext}
+        DIAGRAM STYLE & COMPLEXITY:
+        1. Aim for a "College Level & Professional" standard — sophisticated enough for a system design document, but not so exhaustive that it becomes unreadable.
+        2. Focus on the core 8-12 most critical elements/interactions. Do not over-engineer or include every minor detail.
+        3. Ensure the diagram is clean, balanced, and easy to follow at a glance.
+        4. Group related elements using packages or rectangles where appropriate for better organization.
 
-STRICT RULES:
-1. Return ONLY a JSON object: { "${typeKey}": "@startuml\\n...\\n@enduml" }
-2. The diagram MUST be a ${typeMeta.label} diagram — NO other diagram type.
-3. Use ONLY the PlantUML elements shown in the example above.
-4. All diagram content must relate to the project requirements.
-5. Do NOT include markdown fences, explanations, or comments outside @startuml/@enduml.
-6. Escape double quotes inside the JSON string as \\".
-7. The code must start with @startuml and end with @enduml.`;
+        ${typeMeta.guide}
+
+        PROJECT REQUIREMENTS:
+        ${reqContext}
+
+        STRICT RULES:
+        1. Return ONLY a JSON object: { "${typeKey}": "@startuml\\n...\\n@enduml" }
+        2. The diagram MUST be a ${typeMeta.label} diagram — NO other diagram type.
+        3. Use ONLY the PlantUML elements shown in the example above.
+        4. ALL labels or names with spaces MUST be wrapped in double quotes (e.g. actor "Premium User").
+        5. Use simple, clear arrows. Avoid overly complex routing.
+        6. Do NOT include markdown fences, explanations, or comments outside @startuml/@enduml.
+        7. Escape double quotes inside the JSON string as \\".
+        8. The code must start with @startuml and end with @enduml.`;
 
         let attempt = 0;
         const maxAttempts = 3;
