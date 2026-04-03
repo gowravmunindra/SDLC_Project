@@ -617,8 +617,8 @@ Apply all checks above, then generate the complete project JSON now:`;
     // ── Update an existing project ─────────────────────────────────────────────
     async updateProject(userPrompt, currentFiles, selectedStack = null) {
         const filePaths = currentFiles.map(f => `  ${f.path}`).join('\n');
-        const existingCode = currentFiles.slice(0, 8).map(f =>
-            `--- ${f.path} ---\n${(f.code || '').slice(0, 400)}`
+        const existingCode = currentFiles.map(f =>
+            `--- ${f.path} ---\n${f.code || ''}`
         ).join('\n\n');
 
         const resolvedDeps = resolveStackDependencies(selectedStack);
