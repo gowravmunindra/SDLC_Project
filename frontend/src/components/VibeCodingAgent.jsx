@@ -167,6 +167,7 @@ function VibeCodingAgent({ onClose, onComplete }) {
     const [userPrompt, setUserPrompt] = useState('')
     const [isGenerating, setIsGenerating] = useState(false)
     const [countdown, setCountdown] = useState(0)
+    const [totalGenTime, setTotalGenTime] = useState(120)
     const [chatMessages, setChatMessages] = useState(() => {
         const stackMsg = designStack
             ? `\n\n🔧 **Stack detected from Design Phase:** ${stackLabel}\nAll generated code will use this stack.`
@@ -196,7 +197,16 @@ function VibeCodingAgent({ onClose, onComplete }) {
         'Generating README & config files...',
         'Finalizing project bundle...'
     ]
+    const UPDATE_STEPS = [
+        'Analyzing requested changes...',
+        'Scanning existing codebase...',
+        'Modifying requested files...',
+        'Applying UI updates...',
+        'Ensuring consistency...',
+        'Finalizing modifications...'
+    ]
     const [genStep, setGenStep] = useState(0)
+    const [isUpdating, setIsUpdating] = useState(false)
     const stepTimerRef = useRef(null)
 
     // ── Load persisted data ───────────────────────────────────────────────────
@@ -234,13 +244,14 @@ function VibeCodingAgent({ onClose, onComplete }) {
         if (isGenerating) {
             setGenStep(0)
             stepTimerRef.current = setInterval(() => {
-                setGenStep(s => (s + 1) % GEN_STEPS.length)
+                const stepsArray = isUpdating ? UPDATE_STEPS : GEN_STEPS
+                setGenStep(s => (s + 1) % stepsArray.length)
             }, 3500)
         } else {
             clearInterval(stepTimerRef.current)
         }
         return () => clearInterval(stepTimerRef.current)
-    }, [isGenerating])
+    }, [isGenerating, isUpdating])
 
     // ── Resize handlers ───────────────────────────────────────────────────────
     const handleExplorerResize = useCallback((delta) => {
@@ -364,7 +375,17 @@ function VibeCodingAgent({ onClose, onComplete }) {
         }
 
         setIsGenerating(true)
-        setCountdown(120)
+        setIsUpdating(!isFresh)
+
+        // Dynamic time estimation
+        let estimatedTime = 120
+        if (!isFresh) {
+            const p = prompt.toLowerCase()
+            const isSmallUpdate = prompt.length < 150 && (p.includes('color') || p.includes('text') || p.includes('ui') || p.includes('button') || p.includes('style') || p.includes('margin') || p.includes('padding') || p.includes('change'))
+            estimatedTime = isSmallUpdate ? 15 : 45
+        }
+        setTotalGenTime(estimatedTime)
+        setCountdown(estimatedTime)
 
         try {
             const payload = {
@@ -459,7 +480,7 @@ function VibeCodingAgent({ onClose, onComplete }) {
                     {isGenerating && (
                         <div className="vc-gen-indicator">
                             <div className="vc-gen-pulse" />
-                            <span>{GEN_STEPS[genStep]}</span>
+                            <span>{isUpdating ? UPDATE_STEPS[genStep] : GEN_STEPS[genStep]}</span>
                             {countdown > 0 && <span className="vc-countdown">~{countdown}s</span>}
                         </div>
                     )}
@@ -667,12 +688,12 @@ function VibeCodingAgent({ onClose, onComplete }) {
                                                 <div className="vc-gen-bars">
                                                     <span /><span /><span /><span /><span />
                                                 </div>
-                                                <div className="vc-gen-step">{GEN_STEPS[genStep]}</div>
+                                                <div className="vc-gen-step">{isUpdating ? UPDATE_STEPS[genStep] : GEN_STEPS[genStep]}</div>
                                                 {countdown > 0 && (
                                                     <div className="vc-gen-progress">
                                                         <div
                                                             className="vc-gen-progress-bar"
-                                                            style={{ width: `${((90 - countdown) / 90) * 100}%` }}
+                                                            style={{ width: `${((totalGenTime - countdown) / totalGenTime) * 100}%` }}
                                                         />
                                                     </div>
                                                 )}

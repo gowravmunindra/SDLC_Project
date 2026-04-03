@@ -592,11 +592,10 @@ ${GENERATION_STANDARDS}
 Respond with ONLY this JSON — no prose, no markdown fences:
 {
   "files": [
-    { "path": "README.md",   "code": "# ${projectName}\\n..." },
-    { "path": "frontend/package.json", "code": "{ \\"name\\": \\"${slug}\\", ... }" },
-    ...all other files...
+    { "path": "README.md", "code": "# ${projectName}\\n..." },
+    { "path": "frontend/package.json", "code": "{ \\"name\\": \\"${slug}\\" }" }
   ],
-  "summary": "2–3 sentence plain-English description of what was built and how to run it."
+  "summary": "2-3 sentence plain-English description of what was built and how to run it."
 }
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
