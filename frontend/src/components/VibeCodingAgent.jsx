@@ -444,8 +444,8 @@ function VibeCodingAgent({ onClose, onComplete }) {
                         <div className="vc-file-count-badge">{files.length} files</div>
                     )}
                     {currentProject?.design?.selectedStack && (
-                        <div 
-                            className="vc-project-chip vc-stack-chip" 
+                        <div
+                            className="vc-project-chip vc-stack-chip"
                             style={{ background: 'rgba(99, 102, 241, 0.15)', color: '#818cf8' }}
                             title={`${currentProject.design.selectedStack.name}: ${currentProject.design.selectedStack.frontend}, ${currentProject.design.selectedStack.backend}, ${currentProject.design.selectedStack.database}`}
                         >
@@ -575,7 +575,7 @@ function VibeCodingAgent({ onClose, onComplete }) {
                             <div className="vc-welcome">
                                 <div className="vc-welcome-glow" />
                                 <div className="vc-welcome-icon">⚡</div>
-                                <h2 className="vc-welcome-title">Vibe Coding Studio</h2>
+                                <h2 className="vc-welcome-title">Development Studio</h2>
                                 <p className="vc-welcome-sub">Generate production-ready, runnable projects in seconds using AI.</p>
 
                                 {/* Stack Banner */}
