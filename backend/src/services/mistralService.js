@@ -285,6 +285,41 @@ class MistralService {
     }
 
     /**
+     * Generate mathematical embeddings for text chunks using mistral-embed.
+     * @param {string|string[]} input - Single string or array of strings
+     */
+    async generateEmbeddings(input) {
+        if (!this.apiKey || this.apiKey.trim() === '') {
+            throw new Error('MISTRAL_API_KEY is not configured in backend/.env');
+        }
+
+        const inputs = Array.isArray(input) ? input : [input];
+        if (inputs.length === 0) return [];
+
+        try {
+            console.log(`[Mistral] Generating embeddings for ${inputs.length} text chunks...`);
+            
+            const response = await axios.post('https://api.mistral.ai/v1/embeddings', {
+                model: 'mistral-embed',
+                input: inputs
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${this.apiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                timeout: 90000
+            });
+
+            // Mistral returns data array with `{ embedding: [...] }`
+            return response.data.data.map(item => item.embedding);
+        } catch (error) {
+            console.error('[Mistral] Embedding Error:', error.message);
+            // Non-fatal, just optionally return empty or throw based on usage
+            throw error;
+        }
+    }
+
+    /**
      * Specialized: Generate Requirements with reliability and validation.
      * 
      * @param {string} projectName        - Mandatory. The name of the project (e.g. "Hospital Management System")

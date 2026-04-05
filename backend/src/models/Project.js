@@ -82,6 +82,12 @@ const projectSchema = new mongoose.Schema({
         completedAt: Date
     },
 
+    // Vector Search Support (Semantic RAG)
+    vectorEmbeddings: {
+        requirements: { type: [Number], default: [] },
+        design: { type: [Number], default: [] }
+    },
+
     // Progress Tracking Summary
     progress: {
         overall_completion: { type: Number, default: 0 },

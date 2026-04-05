@@ -23,7 +23,7 @@ class AIGuideService {
         const hasMistralKey = process.env.MISTRAL_API_KEY && process.env.MISTRAL_API_KEY.length > 10;
 
         if (hasMistralKey) {
-            return await this._getAIResponse(userQuery, progressReport);
+            return await this._getAIResponse(userQuery, progressReport, project);
         } else {
             return this._getFallbackResponse(userQuery, progressReport);
         }
@@ -32,7 +32,25 @@ class AIGuideService {
     /**
      * Generate intelligent response using Mistral.
      */
-    async _getAIResponse(userQuery, report) {
+    async _getAIResponse(userQuery, report, project) {
+        let relevantCodeContext = "";
+        try {
+            if (project && project.development && project.development.codeFiles) {
+                const hasEmbeddings = project.development.codeFiles.some(f => f.embedding && f.embedding.length > 0);
+                if (hasEmbeddings) {
+                    const vectorSearch = require('../utils/vectorSearch');
+                    console.log('[AIGuide RAG] Performing semantic chatbot search...');
+                    const [queryEmbedding] = await mistralService.generateEmbeddings([userQuery]);
+                    const topFiles = vectorSearch.searchSimilar(queryEmbedding, project.development.codeFiles, 3);
+                    if (topFiles.length > 0) {
+                        relevantCodeContext = "\n\nRELEVANT CODE SNIPPETS (Semantic RAG Match):\n" + topFiles.map(f => `--- ${f.path} ---\n${(f.code || '').slice(0, 800)}`).join('\n\n');
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[AIGuide RAG] Search failed:', e.message);
+        }
+
         const systemPrompt = `You are the "AI Guide", a friendly, supportive, and brilliant software development mentor.
 Your goal is to guide the user through the SDLC process with encouragement and technical expertise.
 
@@ -42,7 +60,7 @@ ${report ? `
 - Progress: \`${report.overall_completion}\`
 - Health: ${report.health_status === 'Healthy' ? '✅ Healthy' : '⚠️ Needs Attention'}
 - Status: ${JSON.stringify(report.phase_progress)}
-` : "No project is currently active."}
+` : "No project is currently active."}${relevantCodeContext}
 
 CORE BEHAVIOR:
 1. **Friendly & Mentor-like**: Start with a warm greeting if it's the start of a conversation. Use a supportive tone.

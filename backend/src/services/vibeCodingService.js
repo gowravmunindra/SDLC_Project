@@ -1,4 +1,5 @@
 const mistralService = require('./mistralService');
+const vectorSearch = require('../utils/vectorSearch');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DEFAULT PINNED DEPENDENCIES  (fallback when no design-phase stack is set)
@@ -608,6 +609,17 @@ Apply all checks above, then generate the complete project JSON now:`;
 
         const result = await mistralService.generateJSON(prompt);
         result.files = sanitizeFiles(result.files || []);
+
+        try {
+            const textsToEmbed = result.files.map(f => `File: ${f.path}\nCode:\n${f.code}`);
+            if (textsToEmbed.length > 0) {
+                const embeddings = await mistralService.generateEmbeddings(textsToEmbed);
+                result.files.forEach((f, i) => f.embedding = embeddings[i] || []);
+            }
+        } catch (e) {
+            console.warn('[VibeCoding RAG] Failed to generate embeddings for generation:', e.message);
+        }
+
         result.structure = buildStructureFromFiles(result.files);
         result.mode = mode;
         result.techStack = selectedStack;
@@ -615,9 +627,24 @@ Apply all checks above, then generate the complete project JSON now:`;
     }
 
     // ── Update an existing project ─────────────────────────────────────────────
+    // ── Update an existing project ─────────────────────────────────────────────
     async updateProject(userPrompt, currentFiles, selectedStack = null) {
+        
+        let topRelevantFiles = currentFiles.slice(0, 8);
+        try {
+            const hasEmbeddings = currentFiles.some(f => f.embedding && f.embedding.length > 0);
+            if (hasEmbeddings) {
+                console.log('[VibeCoding RAG] Performing semantic search...');
+                const [queryEmbedding] = await mistralService.generateEmbeddings([userPrompt]);
+                const searchResults = vectorSearch.searchSimilar(queryEmbedding, currentFiles, 8);
+                if (searchResults.length > 0) topRelevantFiles = searchResults;
+            }
+        } catch (e) {
+            console.warn('[VibeCoding RAG] Search failed, falling back to naive injection:', e.message);
+        }
+
         const filePaths = currentFiles.map(f => `  ${f.path}`).join('\n');
-        const existingCode = currentFiles.slice(0, 8).map(f =>
+        const existingCode = topRelevantFiles.map(f =>
             `--- ${f.path} ---\n${(f.code || '').slice(0, 400)}`
         ).join('\n\n');
 
@@ -669,6 +696,17 @@ Respond with ONLY this JSON:
                 path: (f.path || '').replace(/^[./\\]+/, '').replace(/\\/g, '/').trim(),
                 code: typeof f.code === 'string' ? f.code : ''
             }));
+
+            try {
+                const changedFiles = result.files.filter(f => f.action !== 'deleted');
+                if (changedFiles.length > 0) {
+                    const textsToEmbed = changedFiles.map(f => `File: ${f.path}\nCode:\n${f.code}`);
+                    const embeddings = await mistralService.generateEmbeddings(textsToEmbed);
+                    changedFiles.forEach((f, i) => f.embedding = embeddings[i] || []);
+                }
+            } catch (e) {
+                console.warn('[VibeCoding RAG] Failed to generate embeddings for updated files:', e.message);
+            }
         }
 
         return result;
